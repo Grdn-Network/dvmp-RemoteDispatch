@@ -2,6 +2,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace DvMod.RemoteDispatch
 {
@@ -150,12 +151,21 @@ namespace DvMod.RemoteDispatch
 				return minimalData;
 			}
 
+			private static bool _fieldNamesLogged = false;
+
 			private static MinimalSignalData CreateMinimalSignal(JObject signalObject)
 			{
 				var currentAspect = GetNullableAsSignalAspect(signalObject)?.ToString() ?? "";
 				var mode = NormalizeToString(signalObject, "Mode", null)?.ToString() ?? string.Empty;
 				var position = GetLatLonArray(signalObject);
 				var type = NormalizeToString(signalObject, "Type", null)?.ToString() ?? string.Empty;
+
+				// Log field names once so we can see exactly what DVSignals exposes
+				if (!_fieldNamesLogged)
+				{
+					_fieldNamesLogged = true;
+					Main.Log($"[SignalsShim] DVSignals raw fields: {string.Join(", ", signalObject.Properties().Select(p => p.Name))}");
+				}
 
 				float? direction = null;
 				try
