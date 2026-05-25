@@ -42,6 +42,45 @@ document.getElementById('mapBackgroundCheckbox')
 		else terrainOverlay.remove();
 	});
 
+// Custom image overlay — file pick or URL, same world bounds as the terrain image.
+let customOverlay = null;
+let customOverlayBlobUrl = null;
+
+function applyCustomOverlay() {
+	if (customOverlay) { customOverlay.remove(); customOverlay = null; }
+	if (!document.getElementById('customOverlayCheckbox').checked) return;
+	const src = customOverlayBlobUrl || document.getElementById('customOverlayUrl').value.trim();
+	if (!src) return;
+	const opacity = document.getElementById('customOverlayOpacity').value / 100;
+	customOverlay = L.imageOverlay(src, terrainBounds, { opacity, zIndex: -9 }).addTo(map);
+}
+
+document.getElementById('customOverlayCheckbox').addEventListener('change', applyCustomOverlay);
+document.getElementById('customOverlayUrl').addEventListener('change', applyCustomOverlay);
+document.getElementById('customOverlayOpacity').addEventListener('input', e => {
+	if (customOverlay) customOverlay.setOpacity(e.target.value / 100);
+});
+document.getElementById('customOverlayFile').addEventListener('change', e => {
+	if (customOverlayBlobUrl) { URL.revokeObjectURL(customOverlayBlobUrl); customOverlayBlobUrl = null; }
+	const file = e.target.files[0];
+	if (file) customOverlayBlobUrl = URL.createObjectURL(file);
+	applyCustomOverlay();
+});
+
+// Signals are hidden when zoomed out past this level to reduce clutter.
+// Raise the number to show them at a closer zoom; lower it to show them sooner.
+const SIGNAL_MIN_ZOOM = 17;
+const signalLayerGroup = L.layerGroup();
+
+function updateSignalLayerVisibility() {
+	const zoom = map.getZoom();
+	if (zoom >= SIGNAL_MIN_ZOOM) {
+		if (!map.hasLayer(signalLayerGroup)) signalLayerGroup.addTo(map);
+	} else {
+		if (map.hasLayer(signalLayerGroup)) signalLayerGroup.remove();
+	}
+}
+
 let markerToFollow;
 map.addEventListener('mousedown', stopFollowing);
 map.on('drag', () => {
@@ -309,6 +348,7 @@ function updateCarJobs() {
 		updateCarRow(carId);
 		updateCarMarker(carId);
 	}
+	updateTrainBoard();
 }
 
 function updateJobListColors() {
@@ -460,6 +500,7 @@ const junctionsReady = tracksReady
 		junctions = allJunctionData.map((data, index) => ({
 			marker: createJunctionMarker(data.position, index, data.id), // id here is the "real" ID of the Junction, the index is just how the frontend handles them internally
 			branches: data.branches,
+			position: data.position, // stored so zoom handler can resize bounds
 		}))
 	);
 
@@ -521,16 +562,12 @@ function updateJunctionOverlay(junctionId, selectedBranch) {
 }
 
 function getJunctionOverlayBounds(position) {
-	const size = metersToDegrees * 5;
+	// Scale with zoom so junctions stay a consistent pixel size rather than
+	// shrinking to invisible dots when the dispatcher is zoomed out.
+	const size = metersToDegrees * 5 * scaleMarkerFactor;
 	return [
-		[
-			position[0] - size,
-			position[1] - size / 2
-		],
-		[
-			position[0] + size,
-			position[1] + size / 2
-		]
+		[position[0] - size, position[1] - size / 2],
+		[position[0] + size, position[1] + size / 2],
 	];
 }
 
@@ -554,6 +591,9 @@ function updateAllJunctions(states) {
 
 const signalMarkers = new Map();
 const signalIconAnchor = [12, 12];
+// Threshold for detecting signals at the same junction (~3 m). Signals within this
+// distance get a small positional nudge so each is individually clickable.
+const SIGNAL_STACK_DEG = 0.00003;
 
 
 function makeSafeSignalId(id) {
@@ -621,8 +661,22 @@ function getSignalIcon(aspect, mode, type) {
 function createSignalMarker(signalId, signalData) {
 	const aspect = signalData.CurrentAspectId || 'OFF';
 	const mode = signalData.Mode || 'Automatic';
-	const signalType = signalData.Type
-	const position = signalData.Position;
+	const signalType = signalData.Type;
+	const basePosition = signalData.Position;
+
+	// Count signals already placed at essentially the same spot (opposite-facing junction
+	// signals share a coordinate). Nudge each additional one slightly north so they are
+	// individually visible and clickable at dispatch zoom levels.
+	let stackIndex = 0;
+	signalMarkers.forEach(entry => {
+		if (!entry.position) return;
+		if (Math.abs(basePosition[0] - entry.position[0]) < SIGNAL_STACK_DEG &&
+			Math.abs(basePosition[1] - entry.position[1]) < SIGNAL_STACK_DEG)
+			stackIndex++;
+	});
+	const position = stackIndex === 0
+		? basePosition
+		: [basePosition[0] + stackIndex * SIGNAL_STACK_DEG, basePosition[1]];
 
 	const marker = L.marker(position, {
 		icon: getSignalIcon(aspect, mode, signalType),
@@ -631,9 +685,11 @@ function createSignalMarker(signalId, signalData) {
 		zIndexOffset: Math.floor(position[0] * 100000 + position[1] * 100000),
 	})
 		.bindPopup(() => buildSignalPopup(signalId, signalType), { maxWidth: 260 })
-		.addTo(map);
+		.addTo(signalLayerGroup);
 
-	signalMarkers.set(signalId, { marker, aspect, mode, type: signalType });
+	// Store basePosition (not the nudged position) so future stack detection
+	// compares against real coordinates, not accumulated offsets.
+	signalMarkers.set(signalId, { marker, aspect, mode, type: signalType, position: basePosition });
 }
 
 function buildSignalPopup(signalId, signalType) {
@@ -1242,9 +1298,9 @@ function updateCarMarker(carId) {
 
 function getCarOverlayBounds(carId, carData) {
 	const position = carData.position;
-	// If this is a selected loco, apply zoom-based scaling factor to make it more visible
-	// We dont need to check if it's a loco here because only locos can (should) be in selectedLocos, so non-locos will always have a factor of 1
-	const factor = selectedLocos.has(carId) ? scaleMarkerFactor : 1;
+	// Selected/highlighted locos scale up so they're easy to spot, but cap at 3×
+	// so they don't balloon to absurd sizes when zoomed all the way out.
+	const factor = selectedLocos.has(carId) ? Math.min(scaleMarkerFactor, 3) : 1;
 	const length = metersToDegrees * carData.length * factor;
 	const width = metersToDegrees * carWidthMeters * factor;
 	return [[position[0] - width / 2, position[1] - length / 2], [position[0] + width / 2, position[1] + length / 2]];
@@ -1291,6 +1347,7 @@ function updateAllCars(updateCarData) {
 			removeCar(carId);
 	updateLocoList();
 	updateLocoListSidebar();
+	updateTrainBoard();
 	// Remove any selected locos that are no longer present
 	for (const id of Array.from(selectedLocos))
 		if (!allCarData.has(id))
@@ -1302,6 +1359,7 @@ function updateCars(cars) {
 	Object.entries(cars).forEach(([carId, carData]) =>
 		updateCar(carId, carData));
 	updatePlayerLocoAssignments();
+	updateTrainBoard();
 }
 
 /////////////////////
@@ -1334,13 +1392,56 @@ function updatescaleMarkerFactor() {
 		});
 	}
 
-	// Refresh signal icons so their size tracks the current zoom level
+	// Resize junction overlays to maintain consistent pixel footprint across zoom levels
+	junctions.forEach(({ marker, position }) => {
+		if (marker && position) marker.setBounds(getJunctionOverlayBounds(position));
+	});
+
+	// Show/hide signal layer based on zoom, then refresh icon sizes for visible ones
+	updateSignalLayerVisibility();
 	signalMarkers.forEach(({ marker, aspect, mode, type }) => {
 		marker.setIcon(getSignalIcon(aspect, mode, type));
 	});
 }
 
 // Update the loco selection sidebar. Shows ordered list of L- IDs with checkboxes.
+function updateTrainBoard() {
+	const body = document.getElementById('trainBoardBody');
+	if (!body) return;
+
+	// Reverse map: locoNum string → playerId (e.g. "032" → "Guardian")
+	const locoNumToPlayer = new Map();
+	playerLocoLabels.forEach((locoNum, playerId) => {
+		if (locoNum) locoNumToPlayer.set(locoNum, playerId);
+	});
+
+	const locos = [...allCarData.entries()]
+		.filter(([_, d]) => d.canBeControlled)
+		.sort(([a], [b]) => a.localeCompare(b));
+
+	const frag = document.createDocumentFragment();
+	for (const [carId, data] of locos) {
+		// L-DE2-014 → type "DE2", num "014"
+		const parts = carId.split('-');
+		const locoNum = parts[parts.length - 1];
+		const locoType = parts.length >= 3 ? parts.slice(1, -1).join('-') : '?';
+
+		const crew = locoNumToPlayer.get(locoNum) || '-';
+		const jobId = carJobIds.get(carId);
+		const jobLabel = jobId || '-';
+		const dest = (jobId && allJobData.has(jobId)) ? (allJobData.get(jobId).destinationYardId || '-') : '-';
+		const cars = (data.carsInFront ?? 0) + (data.carsInRear ?? 0);
+		const speed = data.forwardSpeed != null ? Math.round(data.forwardSpeed) : 0;
+
+		const row = document.createElement('tr');
+		row.innerHTML =
+			`<td>${locoNum}</td><td>${crew}</td><td>${locoType}</td>` +
+			`<td>${cars}</td><td>${jobLabel}</td><td>${dest}</td><td>${speed}</td>`;
+		frag.appendChild(row);
+	}
+	body.replaceChildren(frag);
+}
+
 function updateLocoListSidebar() {
 	if (!locoListBody)
 		return;
@@ -1654,5 +1755,6 @@ const signalsReady = junctionsReady
 
 signalsReady.then(_ => {
 	buildSignalsSidebar(signalsInstalled);
+	updateSignalLayerVisibility(); // apply zoom filter immediately after signals load
 	updateLoop();
 });

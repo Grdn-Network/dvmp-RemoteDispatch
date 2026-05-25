@@ -20,6 +20,7 @@
 				<li><a href="#carsTab" role="tab"><i class="fas fa-train" title="Cars"></i></a></li>
 				<li><a href="#locoFilterTab" role="tab"><i class="fas fa-eye" title="Loco select"></i></a></li>
 				<li><a href="#jobsTab" role="tab"><i class="fas fa-clipboard-list" title="Jobs"></i></a></li>
+				<li><a href="#trainBoardTab" role="tab"><i class="fas fa-table" title="Train Board"></i></a></li>
 				<li><a href="#locoControlTab" role="tab"><i class="fas fa-gamepad" title="Loco Control"></i></a></li>
 				<li><a href="#settingsTab" role="tab"><i class="fas fa-cog" title="Settings"></i></a></li>
 				<li><a href="#signals-sidebar" role="tab"><i class="fas fa-traffic-light" title="Signals"></i></a></li>
@@ -59,6 +60,26 @@
 				<label>active only<input id="jobActiveOnly" type="checkbox"></label>
 				<table id="jobList">
 					<tbody id="jobListBody"></tbody>
+				</table>
+			</div>
+			<div class="leaflet-sidebar-pane" id="trainBoardTab">
+				<h1 class="leaflet-sidebar-header">
+					Train Board
+					<span class="leaflet-sidebar-close"><i class="fa fa-caret-left"></i></span>
+				</h1>
+				<table id="trainBoardTable">
+					<thead>
+						<tr>
+							<th>#</th>
+							<th>Crew</th>
+							<th>Type</th>
+							<th>Cars</th>
+							<th>Job</th>
+							<th>Dest</th>
+							<th>km/h</th>
+						</tr>
+					</thead>
+					<tbody id="trainBoardBody"></tbody>
 				</table>
 			</div>
 			<div class="leaflet-sidebar-pane" id="locoControlTab">
@@ -145,6 +166,22 @@
 					<tr>
 						<th><label for="mapBackgroundCheckbox">Map background</label></th>
 						<td><input type="checkbox" id="mapBackgroundCheckbox" checked></td>
+					</tr>
+					<tr>
+						<th><label for="customOverlayCheckbox">Custom overlay</label></th>
+						<td><input type="checkbox" id="customOverlayCheckbox"></td>
+					</tr>
+					<tr>
+						<th><label for="customOverlayFile">Image file</label></th>
+						<td><input type="file" id="customOverlayFile" accept="image/*"></td>
+					</tr>
+					<tr>
+						<th><label for="customOverlayUrl">or URL</label></th>
+						<td><input type="text" id="customOverlayUrl" placeholder="https://…"></td>
+					</tr>
+					<tr>
+						<th><label for="customOverlayOpacity">Overlay opacity</label></th>
+						<td><input type="range" id="customOverlayOpacity" min="0" max="100" value="70"></td>
 					</tr>
 				</table>
 			</div>
