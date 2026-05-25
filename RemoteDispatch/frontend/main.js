@@ -589,9 +589,11 @@ function updateAllJunctions(states) {
 
 const signalMarkers = new Map();
 const signalIconAnchor = [12, 12];
-// Threshold for detecting signals at the same junction (~3 m). Signals within this
-// distance get a small positional nudge so each is individually clickable.
-const SIGNAL_STACK_DEG = 0.00003;
+// Threshold for detecting signals at the same junction. Signals within this distance
+// get a lateral nudge so each is individually visible and clickable.
+// ~0.0002° ≈ 22 m in-game, which maps to roughly 18–20 px at zoom 17 (the signal
+// minimum zoom) — enough to separate the 16 px-wide signal icons without them overlapping.
+const SIGNAL_STACK_DEG = 0.0002;
 
 
 function makeSafeSignalId(id) {
@@ -646,9 +648,30 @@ function getSignalIconSize(type) {
 	return [Math.round(base[0] * s), Math.round(base[1] * s)];
 }
 
-function getSignalIcon(aspect, mode, type) {
+function getSignalIcon(aspect, mode, type, direction) {
 	const url = getSignalIconUrl(aspect, mode, type);
 	const iconSize = getSignalIconSize(type);
+	const [w, h] = iconSize;
+
+	if (direction != null) {
+		// Normalise to 0-360 and render a ▲ arrow rotated to show the approach direction.
+		// ▲ points north (0°) by default; CSS rotation is clockwise.
+		const deg = ((direction % 360) + 360) % 360;
+		return L.divIcon({
+			html: `<div style="position:relative;width:${w}px;height:${h}px">` +
+			      `<img src="${url}" style="width:${w}px;height:${h}px;display:block">` +
+			      `<div style="position:absolute;bottom:3px;left:50%;width:12px;margin-left:-6px;` +
+			      `text-align:center;font-size:9px;line-height:1;color:#ffe600;` +
+			      `text-shadow:0 0 2px #000,0 0 2px #000;` +
+			      `transform:rotate(${deg}deg);transform-origin:center center;` +
+			      `pointer-events:none">▲</div>` +
+			      `</div>`,
+			className: '',
+			iconSize: iconSize,
+			iconAnchor: signalIconAnchor,
+		});
+	}
+
 	return L.icon({
 		iconUrl: url,
 		iconSize: iconSize,
@@ -661,6 +684,8 @@ function createSignalMarker(signalId, signalData) {
 	const mode = signalData.Mode || 'Automatic';
 	const signalType = signalData.Type;
 	const basePosition = signalData.Position;
+	// Direction (Y-rotation degrees) from DVSignals; null when not available.
+	const direction = signalData.Direction ?? null;
 
 	// Count signals already placed at essentially the same spot (opposite-facing junction
 	// signals share a coordinate). Nudge each additional one slightly north so they are
@@ -677,7 +702,7 @@ function createSignalMarker(signalId, signalData) {
 		: [basePosition[0] + stackIndex * SIGNAL_STACK_DEG, basePosition[1]];
 
 	const marker = L.marker(position, {
-		icon: getSignalIcon(aspect, mode, signalType),
+		icon: getSignalIcon(aspect, mode, signalType, direction),
 		interactive: true,
 		title: signalId,
 		zIndexOffset: Math.floor(position[0] * 100000 + position[1] * 100000),
@@ -687,7 +712,7 @@ function createSignalMarker(signalId, signalData) {
 
 	// Store basePosition (not the nudged position) so future stack detection
 	// compares against real coordinates, not accumulated offsets.
-	signalMarkers.set(signalId, { marker, aspect, mode, type: signalType, position: basePosition });
+	signalMarkers.set(signalId, { marker, aspect, mode, type: signalType, position: basePosition, direction });
 }
 
 function buildSignalPopup(signalId, signalType) {
@@ -846,7 +871,7 @@ function updateAllSignals(signalsData) {
 
 		// Regenerate icon whenever aspect OR mode changes (both affect the icon URL)
 		if (aspectChanged || modeChanged) {
-			existing.marker.setIcon(getSignalIcon(existing.aspect, existing.mode, signalData.Type));
+			existing.marker.setIcon(getSignalIcon(existing.aspect, existing.mode, signalData.Type, existing.direction));
 		}
 
 		// If the popup is currently open, patch the DOM directly so it stays live
@@ -1392,8 +1417,8 @@ function updatescaleMarkerFactor() {
 
 	// Show/hide signal layer based on zoom, then refresh icon sizes for visible ones
 	updateSignalLayerVisibility();
-	signalMarkers.forEach(({ marker, aspect, mode, type }) => {
-		marker.setIcon(getSignalIcon(aspect, mode, type));
+	signalMarkers.forEach(({ marker, aspect, mode, type, direction }) => {
+		marker.setIcon(getSignalIcon(aspect, mode, type, direction));
 	});
 }
 

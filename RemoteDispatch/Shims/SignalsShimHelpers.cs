@@ -22,6 +22,10 @@ namespace DvMod.RemoteDispatch
 			public string? Mode { get; set; }
 			public string? Type { get; set; }
 			public JToken[]? Position { get; set; }
+			/// <summary>Y-axis rotation in degrees (0 = north) indicating which direction trains
+			/// must be travelling for this signal to apply. Null when the DVSignals API does not
+			/// expose a Direction field for this signal.</summary>
+			public float? Direction { get; set; }
 		}
 
 		/// <summary>
@@ -114,8 +118,8 @@ namespace DvMod.RemoteDispatch
 		{
 			/// <summary>
 			/// Projects raw signal data to minimal form containing only frontend-required fields.
-			/// Strips 6 unused fields (IsOn, Direction, JunctionId, SelectedBranch, YardId, TrackId).
-			/// Keeps only 5 used fields: Id, CurrentAspectId, Mode, Position, Type.
+			/// Strips 5 unused fields (IsOn, JunctionId, SelectedBranch, YardId, TrackId).
+			/// Keeps 6 fields: Id, CurrentAspectId, Mode, Position, Type, Direction.
 			/// </summary>
 			public static Dictionary<string, MinimalSignalData> Create(Dictionary<string, object> rawSignals)
 			{
@@ -153,13 +157,23 @@ namespace DvMod.RemoteDispatch
 				var position = GetLatLonArray(signalObject);
 				var type = NormalizeToString(signalObject, "Type", null)?.ToString() ?? string.Empty;
 
+				float? direction = null;
+				try
+				{
+					var dirToken = signalObject["Direction"];
+					if (dirToken != null && dirToken.Type != JTokenType.Null)
+						direction = dirToken.Value<float>();
+				}
+				catch { /* Direction field absent or unexpected type — proceed without it */ }
+
 				return new MinimalSignalData
 				{
 					Id = signalObject["Id"]?.ToString(),
 					CurrentAspectId = currentAspect,
 					Mode = mode,
 					Position = position,
-					Type = type
+					Type = type,
+					Direction = direction,
 				};
 			}
 		}
