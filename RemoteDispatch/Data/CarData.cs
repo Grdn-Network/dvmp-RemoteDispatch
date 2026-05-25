@@ -45,12 +45,15 @@ namespace DvMod.RemoteDispatch
 
         public virtual JObject ToJson()
         {
-            return new JObject(
+            var obj = new JObject(
                 new JProperty("guid", guid),
                 new JProperty("length", (int)length),
                 new JProperty("position", latlon.ToJson()),
                 new JProperty("rotation", Math.Round(rotation, 2))
             );
+            if (jobId != null) obj.Add("jobId", jobId);
+            if (destinationYardId != null) obj.Add("destinationYardId", destinationYardId);
+            return obj;
         }
 
         public static JObject GetAllCarDataJson(bool withLocomotives)
@@ -129,6 +132,11 @@ namespace DvMod.RemoteDispatch
         public readonly float throttle;
         public readonly float trainBrake;
 
+        // Locos are not listed in job car arrays, so jobId on the base class is null.
+        // Walk the trainset to find the job carried by coupled freight cars.
+        private readonly string? _trainsetJobId;
+        private readonly string? _trainsetDestinationYardId;
+
         public ControllableLocoData(TrainCar trainCar)
         : base(
             trainCar.CarGUID,
@@ -150,6 +158,21 @@ namespace DvMod.RemoteDispatch
             reverser = controller.GetReverserValue();
             throttle = controller.GetTargetThrottle();
             brakePipe = trainCar.brakeSystem.brakePipePressure;
+
+            if (jobId == null && trainCar.trainset?.cars != null)
+            {
+                foreach (var car in trainCar.trainset.cars)
+                {
+                    if (car == trainCar) continue;
+                    var jid = JobData.JobIdForCar(car);
+                    if (jid != null)
+                    {
+                        _trainsetJobId = jid;
+                        _trainsetDestinationYardId = JobData.JobForCar(car)?.chainData?.chainDestinationYardId;
+                        break;
+                    }
+                }
+            }
         }
 
         override public JObject ToJson()
@@ -166,6 +189,13 @@ namespace DvMod.RemoteDispatch
             carObj.Add("trainBrake", trainBrake);
             carObj.Add("throttle", throttle);
             carObj.Add("brakePipe", brakePipe);
+            // Emit trainset-derived job if the loco has no direct job assignment
+            if (jobId == null && _trainsetJobId != null)
+            {
+                carObj.Add("jobId", _trainsetJobId);
+                if (_trainsetDestinationYardId != null)
+                    carObj.Add("destinationYardId", _trainsetDestinationYardId);
+            }
             return carObj;
         }
     }

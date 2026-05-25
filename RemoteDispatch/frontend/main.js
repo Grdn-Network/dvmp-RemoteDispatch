@@ -15,6 +15,7 @@ const map = L.map('map', {
 	maxBounds: maxBounds,
 	tap: false,
 	zoomControl: false,
+	wheelPxPerZoomLevel: 40,
 })
 	.fitBounds(mapBounds);
 L.control.scale().addTo(map);
@@ -500,7 +501,6 @@ const junctionsReady = tracksReady
 		junctions = allJunctionData.map((data, index) => ({
 			marker: createJunctionMarker(data.position, index, data.id), // id here is the "real" ID of the Junction, the index is just how the frontend handles them internally
 			branches: data.branches,
-			position: data.position, // stored so zoom handler can resize bounds
 		}))
 	);
 
@@ -562,9 +562,7 @@ function updateJunctionOverlay(junctionId, selectedBranch) {
 }
 
 function getJunctionOverlayBounds(position) {
-	// Scale with zoom so junctions stay a consistent pixel size rather than
-	// shrinking to invisible dots when the dispatcher is zoomed out.
-	const size = metersToDegrees * 5 * scaleMarkerFactor;
+	const size = metersToDegrees * 5;
 	return [
 		[position[0] - size, position[1] - size / 2],
 		[position[0] + size, position[1] + size / 2],
@@ -1392,11 +1390,6 @@ function updatescaleMarkerFactor() {
 		});
 	}
 
-	// Resize junction overlays to maintain consistent pixel footprint across zoom levels
-	junctions.forEach(({ marker, position }) => {
-		if (marker && position) marker.setBounds(getJunctionOverlayBounds(position));
-	});
-
 	// Show/hide signal layer based on zoom, then refresh icon sizes for visible ones
 	updateSignalLayerVisibility();
 	signalMarkers.forEach(({ marker, aspect, mode, type }) => {
@@ -1427,9 +1420,10 @@ function updateTrainBoard() {
 		const locoType = parts.length >= 3 ? parts.slice(1, -1).join('-') : '?';
 
 		const crew = locoNumToPlayer.get(locoNum) || '-';
-		const jobId = carJobIds.get(carId);
-		const jobLabel = jobId || '-';
-		const dest = (jobId && allJobData.has(jobId)) ? (allJobData.get(jobId).destinationYardId || '-') : '-';
+		// jobId and destinationYardId come directly from the car's JSON payload;
+		// the C# side walks the trainset to find the job when the loco has no direct one.
+		const jobLabel = data.jobId || '-';
+		const dest = data.destinationYardId || '-';
 		const cars = (data.carsInFront ?? 0) + (data.carsInRear ?? 0);
 		const speed = data.forwardSpeed != null ? Math.round(data.forwardSpeed) : 0;
 
