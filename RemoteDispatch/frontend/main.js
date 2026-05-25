@@ -26,6 +26,22 @@ const zoomHome = new L.Control.ZoomHome({
 	zoomOutText: '<i class="fas fa-search-minus"></i>',
 }).addTo(map);
 
+// Map background — terrain image from the DV Community Map project.
+// The DV world is 16384m × 16384m; metersToDegrees converts that to Leaflet coords.
+const DV_WORLD_SIZE_DEG = 16384 * metersToDegrees;
+const terrainBounds = [[0, 0], [DV_WORLD_SIZE_DEG, DV_WORLD_SIZE_DEG]];
+const terrainOverlay = L.imageOverlay(
+	'https://pyronicampt.github.io/DV-Community-Map/terrains/dvrt.jpg',
+	terrainBounds,
+	{ opacity: 0.55, zIndex: -10, className: 'map-terrain' }
+).addTo(map);
+
+document.getElementById('mapBackgroundCheckbox')
+	.addEventListener('change', e => {
+		if (e.target.checked) terrainOverlay.addTo(map);
+		else terrainOverlay.remove();
+	});
+
 let markerToFollow;
 map.addEventListener('mousedown', stopFollowing);
 map.on('drag', () => {
@@ -824,6 +840,51 @@ function followCar(carId, shouldScroll) {
 const playerMarkers = new Map();
 let playerScalingEnabled = true;
 
+// Loco proximity: track which loco (by number) each player is closest to.
+// Used to prefix display names with e.g. "[032] Guardian".
+const playerLocoLabels = new Map();   // playerId → locoNum string, or null
+const LOCO_PROXIMITY_METERS = 15;
+const LOCO_PROXIMITY_DEG = LOCO_PROXIMITY_METERS * metersToDegrees;
+
+function getPlayerDisplayName(playerId) {
+	const locoNum = playerLocoLabels.get(playerId);
+	return locoNum ? `[${locoNum}] ${playerId}` : playerId;
+}
+
+function updatePlayerLocoAssignments() {
+	playerMarkers.forEach((marker, playerId) => {
+		const pos = marker.position;
+		if (!pos) return;
+
+		let closestLocoNum = null;
+		let closestDist = LOCO_PROXIMITY_DEG;
+
+		for (const [carId, data] of allCarData) {
+			if (!data.canBeControlled || !data.position) continue;
+			const dLat = pos[0] - data.position[0];
+			const dLon = pos[1] - data.position[1];
+			const dist = Math.sqrt(dLat * dLat + dLon * dLon);
+			if (dist < closestDist) {
+				closestDist = dist;
+				const m = carId.match(/(\d+)$/);   // "L-032" → "032"
+				closestLocoNum = m ? m[1] : carId;
+			}
+		}
+
+		const prev = playerLocoLabels.get(playerId);
+		playerLocoLabels.set(playerId, closestLocoNum);
+
+		if (prev !== closestLocoNum) {
+			console.debug(`[RD] ${playerId} loco: ${prev ?? 'none'} → ${closestLocoNum ?? 'none'}`);
+			const el = marker.playerLabel.getElement();
+			if (el) {
+				const div = el.querySelector('div');
+				if (div) div.textContent = getPlayerDisplayName(playerId);
+			}
+		}
+	});
+}
+
 function getPlayerOverlayBounds(position) {
 	const playerScaleFactor = playerScalingEnabled ? scaleMarkerFactor : 1;
 	const size = metersToDegrees * 2 * playerScaleFactor;
@@ -852,6 +913,7 @@ function updatePlayerOverlays(data) {
 		marker.overlay.setBounds(getPlayerOverlayBounds(playerData.position));
 		marker.playerLabel.setLatLng(playerData.position);
 	});
+	updatePlayerLocoAssignments();
 }
 
 function removePlayerOverlay(id) {
@@ -863,6 +925,7 @@ function removePlayerOverlay(id) {
 		marker.playerLabel.remove();
 	}
 	playerMarkers.delete(id);
+	playerLocoLabels.delete(id);
 }
 
 function createPlayerOverlay(id, playerData) {
@@ -891,7 +954,7 @@ function createPlayerMarker(id, playerData) {
 	// If a tooltip is used, it cannot be bound properly to the overlay as the overlay doesnt have a latlng, so create a separate marker just for the tooltip
 	const playerLabel = L.marker(playerData.position, {
 		icon: L.divIcon({
-			html: `<div style="background: rgba(0,0,0,0.7); color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; white-space: nowrap; opacity: 0.7;">${id}</div>`,
+			html: `<div style="background: rgba(0,0,0,0.7); color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; white-space: nowrap; opacity: 0.7;">${getPlayerDisplayName(id)}</div>`,
 			iconSize: null, // let size scale with content
 			iconAnchor: [0, -20]
 		})
@@ -1232,11 +1295,13 @@ function updateAllCars(updateCarData) {
 	for (const id of Array.from(selectedLocos))
 		if (!allCarData.has(id))
 			selectedLocos.delete(id);
+	updatePlayerLocoAssignments();
 }
 
 function updateCars(cars) {
 	Object.entries(cars).forEach(([carId, carData]) =>
 		updateCar(carId, carData));
+	updatePlayerLocoAssignments();
 }
 
 /////////////////////
