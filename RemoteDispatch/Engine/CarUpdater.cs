@@ -44,8 +44,16 @@ namespace DvMod.RemoteDispatch
 
         public static void MarkTrainsetAsDirty(Trainset trainset)
         {
-            if (trainset.cars.Find(car => CarData.ShouldReturnTrainCar(car, true)) != null)
-                Sessions.AddTag($"trainset-{trainset.id}");
+            if (trainset.cars.Find(car => CarData.ShouldReturnTrainCar(car, true)) == null)
+                return;
+
+            // Serialise on the main thread right now (we're inside a coroutine).
+            // Caching the result means the HTTP response thread can serve it without
+            // a blocking RunOnMainThread call, cutting response latency significantly
+            // when Unity's main thread is busy with physics or rendering.
+            var tag = $"trainset-{trainset.id}";
+            var json = CarData.SerialiseTrainsetOnMainThread(trainset);
+            Sessions.AddTagWithCache(tag, json);
         }
 
         public static void Start()

@@ -1,6 +1,7 @@
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -14,6 +15,23 @@ namespace DvMod.RemoteDispatch
         private static readonly object allSesssionsLock = new object();
         private static readonly Dictionary<string, Session> allSessions = new Dictionary<string, Session>();
         private static readonly HashSet<string> BaseTags = new HashSet<string>() { "cars", "jobs", "junctions", "player", "signals" };
+
+        // Pre-baked JSON for frequently-updated tags (trainset positions).
+        // Written on the Unity main thread; read on HTTP handler threads.
+        // ConcurrentDictionary gives safe lock-free reads with cheap writes.
+        private static readonly ConcurrentDictionary<string, string> _tagCache =
+            new ConcurrentDictionary<string, string>();
+
+        /// <summary>
+        /// Queue a tag update that already has its JSON pre-serialised.
+        /// Calling this from the main thread (e.g. inside a coroutine) means
+        /// the HTTP response path never needs to block waiting for the main thread.
+        /// </summary>
+        public static void AddTagWithCache(string tag, string json)
+        {
+            _tagCache[tag] = json;
+            AddTag(tag);
+        }
 
         public static event Action<string>? OnSessionStarted;
         public static event Action<string>? OnSessionEnded;
@@ -131,6 +149,11 @@ namespace DvMod.RemoteDispatch
 
         private static JToken? GetUpdateForSplitTag(string tag)
         {
+            // Fast path: serve pre-baked JSON written by the main thread at dirty-mark time.
+            // This avoids an extra main-thread round-trip on the hot position-update path.
+            if (_tagCache.TryGetValue(tag, out var cached))
+                return JToken.Parse(cached);
+
             var index = tag.IndexOf('-');
             var tagType = tag.Substring(0, index);
             var tagId = tag.Substring(index + 1);

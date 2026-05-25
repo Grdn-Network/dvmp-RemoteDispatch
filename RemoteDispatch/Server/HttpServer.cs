@@ -421,6 +421,9 @@ namespace DvMod.RemoteDispatch
 			}
 			else
 			{
+				// Static assets embedded in the DLL don't change between game restarts.
+				// Tell the browser to cache them for 1 hour so repeated page loads are instant.
+				context.Response.Headers.Add("Cache-Control", "public, max-age=3600");
 				stream.CopyTo(context.Response.OutputStream);
 				context.Response.Close();
 			}
