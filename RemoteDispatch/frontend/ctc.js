@@ -288,7 +288,14 @@ let myUsername = '';
 function fetchWhoami() {
 	fetch(new URL('/whoami', location))
 		.then(r => r.ok ? r.json() : null)
-		.then(d => { if (d && d.username) myUsername = d.username; })
+		.then(d => {
+			if (d && d.username) {
+				myUsername = d.username;
+				// Zone state may have arrived before we knew our name; re-render so
+				// the owned-by-me highlight is correct.
+				renderZoneBar();
+			}
+		})
 		.catch(() => {});
 }
 
