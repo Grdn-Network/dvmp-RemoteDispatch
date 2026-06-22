@@ -14,6 +14,7 @@ namespace DvMod.RemoteDispatch
         public FeatureFlags featureFlags = new FeatureFlags();
         public bool showUndiscoveredLocomotives = false;
         public bool enableLogging = false;
+        public bool runServerAsClientFallback = false;
 
         public readonly string? version = Main.mod?.Info.Version;
 
@@ -41,6 +42,10 @@ namespace DvMod.RemoteDispatch
             GUILayout.Label("Password (blank for none)");
             serverPassword = GUILayout.TextField(serverPassword);
             GUILayout.EndHorizontal();
+
+            runServerAsClientFallback = GUILayout.Toggle(
+                runServerAsClientFallback,
+                $"Run dispatch server even as a client (use only if the host's dispatch link is down {EnDash} your map may miss host-only data; takes effect on next world load)");
 
             permissions.Draw();
 
