@@ -109,7 +109,7 @@
 	max-width: 260px;
 }
 
-/* ---- Train labels ---- */
+/* ---- Train labels (clickable to offer an xfer) ---- */
 .ctc-train-label {
 	fill: var(--rd-text);
 	font-family: monospace;
@@ -118,7 +118,63 @@
 	paint-order: stroke;
 	stroke: var(--rd-bg);
 	stroke-width: 3px;
-	pointer-events: none;
+	cursor: pointer;
+}
+.ctc-train-label:hover {
+	fill: var(--rd-accent);
+}
+
+/* ---- Xfer offer popup (pick a recipient zone) ---- */
+#ctc-xfer-offer {
+	position: absolute;
+	background: var(--rd-panel);
+	border: 1px solid var(--rd-accent);
+	border-radius: var(--rd-radius);
+	padding: 10px 12px;
+	z-index: 200;
+	width: 220px;
+	color: var(--rd-text);
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+#ctc-xfer-offer .ctc-xfer-offer-title {
+	font-weight: bold;
+	font-size: 13px;
+	margin-bottom: 8px;
+}
+#ctc-xfer-offer .ctc-xfer-offer-empty {
+	font-size: 12px;
+	color: var(--rd-text-muted);
+	margin-bottom: 8px;
+}
+#ctc-xfer-offer select {
+	width: 100%;
+	background: var(--rd-input-bg);
+	color: var(--rd-text);
+	border: 1px solid var(--rd-panel-border);
+	border-radius: 4px;
+	padding: 4px;
+	margin-bottom: 8px;
+	box-sizing: border-box;
+}
+#ctc-xfer-offer .ctc-xfer-offer-actions {
+	display: flex;
+	gap: 8px;
+}
+#ctc-xfer-offer button {
+	flex: 1;
+	border: none;
+	border-radius: 4px;
+	padding: 5px;
+	font-weight: bold;
+	cursor: pointer;
+}
+#ctc-xfer-offer #ctc-xfer-send {
+	background: var(--rd-accent);
+	color: #1a1200;
+}
+#ctc-xfer-offer #ctc-xfer-cancel {
+	background: var(--rd-input-bg);
+	color: var(--rd-text);
 }
 
 /* ---- Zone overlays ---- */

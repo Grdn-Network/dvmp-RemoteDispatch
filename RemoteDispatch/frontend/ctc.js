@@ -196,8 +196,9 @@ function updateTrainLabels() {
 	allCarData.forEach((car, carId) => {
 		if (carId.slice(0, 2) !== 'L-' || !car || !car.position) return;
 		const p = ctcProjection(car.position[0], car.position[1]);
-		parts.push(`<text class="ctc-train-label" x="${(p[0] + 6).toFixed(1)}" `
-			+ `y="${(p[1] - 6).toFixed(1)}">${ctcEscapeAttr(carId.slice(2))}</text>`);
+		parts.push(`<text class="ctc-train-label" data-train-id="${ctcEscapeAttr(carId)}" `
+			+ `x="${(p[0] + 6).toFixed(1)}" y="${(p[1] - 6).toFixed(1)}">`
+			+ `${ctcEscapeAttr(carId.slice(2))}</text>`);
 	});
 	layer.innerHTML = parts.join('');
 }
@@ -223,7 +224,13 @@ function wireCtcInteractions(svg) {
 			openCtcSignalPopup(sig.getAttribute('data-signal-id'), e);
 			return;
 		}
+		const train = e.target.closest('.ctc-train-label');
+		if (train) {
+			openXferOffer(train.getAttribute('data-train-id'), e);
+			return;
+		}
 		closeCtcSignalPopup();
+		closeXferOffer();
 	});
 }
 
@@ -306,10 +313,147 @@ function handleChat(data) {
 	if (atBottom) log.scrollTop = log.scrollHeight;
 }
 
-// Zone-state and xfer handlers are implemented in Step 8; defined here as no-ops
-// so applyUpdate's cases resolve until then.
-function handleZoneState(data) { }
-function handleXfer(data) { }
+/////////////////////
+// Zones — claim / release control territory
+
+let ctcZoneState = {}; // zoneId -> { name, color, owner }
+
+function handleZoneState(data) {
+	if (!data || !data.zones) return;
+	ctcZoneState = data.zones;
+	renderZoneBar();
+}
+
+function renderZoneBar() {
+	const bar = document.getElementById('ctc-zonebar');
+	if (!bar) return;
+	const ids = Object.keys(ctcZoneState).sort();
+	bar.innerHTML = ids.map(id => {
+		const z = ctcZoneState[id];
+		const mine = z.owner && z.owner === myUsername;
+		const ownerLabel = z.owner ? (mine ? 'you' : z.owner) : 'free';
+		return `<div class="ctc-zone-chip${mine ? ' owned-by-me' : ''}" data-zone-id="${ctcEscapeAttr(id)}">`
+			+ `<span class="ctc-zone-dot" style="background:${ctcEscapeAttr(z.color || '#888')}"></span>`
+			+ `<span>${ctcEscapeAttr(z.name || id)}</span>`
+			+ `<span class="ctc-zone-chip-owner">${ctcEscapeAttr(ownerLabel)}</span></div>`;
+	}).join('');
+}
+
+// Click a chip: claim if free, release if it's mine, ignore if someone else owns it.
+function onZoneBarClick(e) {
+	const chip = e.target.closest('.ctc-zone-chip');
+	if (!chip) return;
+	const id = chip.getAttribute('data-zone-id');
+	const z = ctcZoneState[id];
+	if (!z) return;
+	if (z.owner && z.owner === myUsername) {
+		fetch(new URL(`/zone/${encodeURIComponent(id)}/release`, location), { method: 'POST' })
+			.catch(err => console.error('Zone release failed:', err));
+	} else if (!z.owner) {
+		fetch(new URL(`/zone/${encodeURIComponent(id)}/claim`, location), { method: 'POST' })
+			.then(r => { if (r.status === 409) console.warn('Zone already claimed'); })
+			.catch(err => console.error('Zone claim failed:', err));
+	}
+	// Owned by someone else: no-op.
+}
+
+/////////////////////
+// Xfer — receive offers (banner) and send offers (train click)
+
+let ctcPendingXferId = null;
+
+function handleXfer(data) {
+	if (!data || !Array.isArray(data.offers)) { hideXferBanner(); return; }
+	const now = Date.now();
+	// Show the first still-valid offer addressed to me.
+	const mine = data.offers.find(o =>
+		o.toUser === myUsername && (!o.expiresAt || o.expiresAt > now));
+	if (mine) showXferBanner(mine);
+	else hideXferBanner();
+}
+
+function showXferBanner(offer) {
+	ctcPendingXferId = offer.offerId;
+	const text = document.getElementById('ctc-xfer-text');
+	const banner = document.getElementById('ctc-xfer-banner');
+	if (text) {
+		const zone = (ctcZoneState[offer.toZone] && ctcZoneState[offer.toZone].name) || offer.toZone || '?';
+		text.textContent = `${offer.fromUser || '?'} offers ${offer.trainId} → ${zone}`;
+	}
+	if (banner) banner.classList.add('visible');
+}
+
+function hideXferBanner() {
+	ctcPendingXferId = null;
+	const banner = document.getElementById('ctc-xfer-banner');
+	if (banner) banner.classList.remove('visible');
+}
+
+// Offer a train to another dispatcher: pick one of their zones, then POST the offer.
+let ctcXferOfferEl = null;
+
+function openXferOffer(trainId, evt) {
+	closeXferOffer();
+	if (!trainId) return;
+	// Valid recipients are zones owned by someone other than me.
+	const targets = Object.keys(ctcZoneState)
+		.filter(id => {
+			const o = ctcZoneState[id].owner;
+			return o && o !== myUsername;
+		})
+		.sort();
+
+	const wrap = document.createElement('div');
+	wrap.id = 'ctc-xfer-offer';
+	if (targets.length === 0) {
+		wrap.innerHTML = `<div class="ctc-xfer-offer-title">Offer ${ctcEscapeAttr(trainId)}</div>`
+			+ `<div class="ctc-xfer-offer-empty">No other dispatcher is holding a zone to receive it.</div>`
+			+ `<div class="ctc-xfer-offer-actions"><button id="ctc-xfer-cancel">Close</button></div>`;
+	} else {
+		const options = targets.map(id => {
+			const z = ctcZoneState[id];
+			return `<option value="${ctcEscapeAttr(id)}">${ctcEscapeAttr(z.name || id)} — ${ctcEscapeAttr(z.owner)}</option>`;
+		}).join('');
+		wrap.innerHTML = `<div class="ctc-xfer-offer-title">Offer ${ctcEscapeAttr(trainId)}</div>`
+			+ `<select id="ctc-xfer-zone">${options}</select>`
+			+ `<div class="ctc-xfer-offer-actions">`
+			+ `<button id="ctc-xfer-send">Offer</button>`
+			+ `<button id="ctc-xfer-cancel">Cancel</button></div>`;
+	}
+
+	const panel = document.getElementById('ctc-panel');
+	const rect = panel.getBoundingClientRect();
+	const x = Math.min(evt.clientX - rect.left + 12, rect.width - 240);
+	const y = Math.min(evt.clientY - rect.top + 12, rect.height - 140);
+	wrap.style.left = Math.max(8, x) + 'px';
+	wrap.style.top = Math.max(8, y) + 'px';
+	panel.appendChild(wrap);
+	ctcXferOfferEl = wrap;
+
+	const sendBtn = document.getElementById('ctc-xfer-send');
+	if (sendBtn) {
+		sendBtn.addEventListener('click', () => {
+			const zoneId = document.getElementById('ctc-xfer-zone').value;
+			const z = ctcZoneState[zoneId];
+			if (!z || !z.owner) return;
+			fetch(new URL('/xfer/offer', location), {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ trainId, toZone: zoneId, toUser: z.owner }),
+			}).catch(err => console.error('Xfer offer failed:', err));
+			closeXferOffer();
+		});
+	}
+	const cancelBtn = document.getElementById('ctc-xfer-cancel');
+	if (cancelBtn) cancelBtn.addEventListener('click', closeXferOffer);
+}
+
+function closeXferOffer() {
+	if (ctcXferOfferEl) {
+		ctcXferOfferEl.remove();
+		ctcXferOfferEl = null;
+	}
+}
 
 let ctcNotesSyncTimer = null;
 
@@ -352,6 +496,24 @@ function initCollab() {
 			collab.classList.toggle('chat-mode', btn.dataset.tab === 'chat');
 		});
 	}
+
+	// Zone claim/release.
+	const zonebar = document.getElementById('ctc-zonebar');
+	if (zonebar) zonebar.addEventListener('click', onZoneBarClick);
+
+	// Xfer accept / reject.
+	const acc = document.getElementById('ctc-xfer-accept');
+	if (acc) acc.addEventListener('click', () => {
+		if (ctcPendingXferId)
+			fetch(new URL(`/xfer/accept/${ctcPendingXferId}`, location), { method: 'POST' })
+				.catch(err => console.error('Xfer accept failed:', err));
+	});
+	const rej = document.getElementById('ctc-xfer-reject');
+	if (rej) rej.addEventListener('click', () => {
+		if (ctcPendingXferId)
+			fetch(new URL(`/xfer/reject/${ctcPendingXferId}`, location), { method: 'POST' })
+				.catch(err => console.error('Xfer reject failed:', err));
+	});
 
 	fetchWhoami();
 }
