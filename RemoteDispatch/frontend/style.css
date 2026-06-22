@@ -1,3 +1,32 @@
+/* ============================================================
+   Design token foundations — Operations Dark theme
+   Future UI panels should consume these variables.
+   ============================================================ */
+:root {
+  /* Backgrounds */
+  --rd-bg:           #0f1117;
+  --rd-panel:        #1a1d27;
+  --rd-panel-border: #2a2d3a;
+  --rd-input-bg:     #12151e;
+
+  /* Text */
+  --rd-text:         #e2e8f0;
+  --rd-text-muted:   #8892a4;
+
+  /* Accent */
+  --rd-accent:       #f59e0b;
+  --rd-accent-dim:   rgba(245, 158, 11, 0.15);
+
+  /* Status */
+  --rd-danger:       #ef4444;
+  --rd-ok:           #22c55e;
+  --rd-warn:         #eab308;
+
+  /* Spacing */
+  --rd-radius:       6px;
+  --rd-gap:          8px;
+}
+
 th[role=columnheader]:not(.no-sort) {
   cursor: pointer;
 }
