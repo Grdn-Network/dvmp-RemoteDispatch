@@ -1,0 +1,47 @@
+{
+  "_comment": "Dispatch zones. junctionIds are the integer indices used by /junction/{i}/toggle; signalIds are signal id strings. TODO: populate these arrays from live /junction and /signal data, grouping each resource by which yard/area it belongs to. Until populated, every zone is empty so all control is unrestricted (zones still claimable, just with no resources to gate).",
+  "zones": [
+    {
+      "id": "HB",
+      "name": "Harbour",
+      "color": "#3b82f6",
+      "junctionIds": [],
+      "signalIds": []
+    },
+    {
+      "id": "CM",
+      "name": "Coal Mine",
+      "color": "#f59e0b",
+      "junctionIds": [],
+      "signalIds": []
+    },
+    {
+      "id": "SM",
+      "name": "Steel Mill",
+      "color": "#22c55e",
+      "junctionIds": [],
+      "signalIds": []
+    },
+    {
+      "id": "FF",
+      "name": "Food Factory",
+      "color": "#a855f7",
+      "junctionIds": [],
+      "signalIds": []
+    },
+    {
+      "id": "GF",
+      "name": "Goods Factory",
+      "color": "#ec4899",
+      "junctionIds": [],
+      "signalIds": []
+    },
+    {
+      "id": "CW",
+      "name": "City West",
+      "color": "#14b8a6",
+      "junctionIds": [],
+      "signalIds": []
+    }
+  ]
+}

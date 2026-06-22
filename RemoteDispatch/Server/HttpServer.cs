@@ -146,6 +146,26 @@ namespace DvMod.RemoteDispatch
 #endif
 				await HandleSignalRequest(context);
 				break;
+			case "whoami":
+				// Lets the web client learn its own authenticated name so it can do
+				// "owned-by-me" / xfer-targeting checks the server enforces anyway.
+				Render200(context, new JObject { ["username"] = context.User?.Identity?.Name ?? "" });
+				break;
+			case "zones":
+				Render200(context, ZoneSystem.GetZoneStateJObject());
+				break;
+			case "zone":
+				HandleZoneRequest(context);
+				break;
+			case "notes":
+				HandleNotesRequest(context);
+				break;
+			case "chat":
+				HandleChatRequest(context);
+				break;
+			case "xfer":
+				HandleXferRequest(context);
+				break;
 			case "ws":
 #if DEBUG
 				Main.Log("/ws endpoint hit");
@@ -309,6 +329,12 @@ namespace DvMod.RemoteDispatch
 					return;
 				}
 
+				if (!ZoneSystem.CanControlSignal(context.User.Identity.Name, signalId!))
+				{
+					RenderEmpty(context, 403);
+					return;
+				}
+
 				if (mode != null)
 				{
 					Main.DebugLog($"Setting signal {signalId} mode to {mode}");
@@ -389,6 +415,11 @@ namespace DvMod.RemoteDispatch
 						RenderEmpty(context, 403);
 						return;
 					}
+					if (!ZoneSystem.CanControlJunction(context.User.Identity.Name, junctionId))
+					{
+						RenderEmpty(context, 403);
+						return;
+					}
 					var newSelectedBranch = await Updater.RunOnMainThread(() =>
 					{
 						Main.DebugLog($"Toggling J-{junctionId}.");
@@ -417,6 +448,148 @@ namespace DvMod.RemoteDispatch
 			}
 			var trainsetId = int.Parse(request.Url.Segments[2]);
 			Render200(context, CarData.GetTrainsetDataJson(trainsetId));
+		}
+
+		private static string ReadRequestBody(HttpListenerContext context, int maxBytes = 65536)
+		{
+			using var ms = new MemoryStream();
+			var stream = context.Request.InputStream;
+			var buffer = new byte[8192];
+			int total = 0, read;
+			while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+			{
+				total += read;
+				if (total > maxBytes) break;
+				ms.Write(buffer, 0, read);
+			}
+			return Encoding.UTF8.GetString(ms.ToArray());
+		}
+
+		// POST /zone/{zoneId}/claim | /zone/{zoneId}/release
+		private static void HandleZoneRequest(HttpListenerContext context)
+		{
+			var segments = context.Request.Url.Segments;
+			if (segments.Length != 4 || context.Request.HttpMethod != "POST")
+			{
+				RenderEmpty(context, 404);
+				return;
+			}
+			var username = context.User?.Identity?.Name ?? "";
+			var zoneId = segments[2].TrimEnd('/');
+			switch (segments[3].TrimEnd('/'))
+			{
+			case "claim":
+				RenderEmpty(context, ZoneSystem.TryClaim(username, zoneId) ? 200 : 409);
+				break;
+			case "release":
+				ZoneSystem.Release(username, zoneId);
+				RenderEmpty(context, 200);
+				break;
+			default:
+				RenderEmpty(context, 404);
+				break;
+			}
+		}
+
+		// GET /notes | POST /notes (body = plain text, last-write-wins)
+		private static void HandleNotesRequest(HttpListenerContext context)
+		{
+			switch (context.Request.HttpMethod)
+			{
+			case "GET":
+				Render200(context, DispatchCollab.GetNotesJObject());
+				break;
+			case "POST":
+				DispatchCollab.UpdateNotes(ReadRequestBody(context));
+				RenderEmpty(context, 204);
+				break;
+			default:
+				RenderEmpty(context, 405);
+				break;
+			}
+		}
+
+		// POST /chat (body = {"text": "..."})
+		private static void HandleChatRequest(HttpListenerContext context)
+		{
+			if (context.Request.HttpMethod != "POST")
+			{
+				RenderEmpty(context, 405);
+				return;
+			}
+			var username = context.User?.Identity?.Name ?? "";
+			try
+			{
+				var body = ReadRequestBody(context);
+				var text = string.IsNullOrEmpty(body) ? null : (string?)JObject.Parse(body)["text"];
+				if (string.IsNullOrEmpty(text))
+				{
+					RenderEmpty(context, 400);
+					return;
+				}
+				DispatchCollab.PostChat(username, text!);
+				RenderEmpty(context, 204);
+			}
+			catch (Exception e)
+			{
+				Main.Warning($"Bad chat request: {e.Message}");
+				RenderEmpty(context, 400);
+			}
+		}
+
+		// GET /xfer | POST /xfer/offer | POST /xfer/accept/{id} | POST /xfer/reject/{id}
+		private static void HandleXferRequest(HttpListenerContext context)
+		{
+			var segments = context.Request.Url.Segments;
+			var username = context.User?.Identity?.Name ?? "";
+
+			if (segments.Length == 2 && context.Request.HttpMethod == "GET")
+			{
+				Render200(context, XferSystem.GetStateJObject());
+				return;
+			}
+			if (context.Request.HttpMethod != "POST" || segments.Length < 3)
+			{
+				RenderEmpty(context, 404);
+				return;
+			}
+
+			switch (segments[2].TrimEnd('/'))
+			{
+			case "offer":
+				try
+				{
+					var body = JObject.Parse(ReadRequestBody(context));
+					var trainId = (string?)body["trainId"] ?? "";
+					var toUser = (string?)body["toUser"] ?? "";
+					var toZone = (string?)body["toZone"] ?? "";
+					var fromZone = (string?)body["fromZone"] ?? "";
+					if (string.IsNullOrEmpty(trainId) || string.IsNullOrEmpty(toUser))
+					{
+						RenderEmpty(context, 400);
+						return;
+					}
+					var offerId = XferSystem.CreateOffer(trainId, fromZone, toZone, username, toUser);
+					Render200(context, new JObject { ["offerId"] = offerId });
+				}
+				catch (Exception e)
+				{
+					Main.Warning($"Bad xfer offer: {e.Message}");
+					RenderEmpty(context, 400);
+				}
+				break;
+			case "accept":
+				if (segments.Length < 4) { RenderEmpty(context, 404); return; }
+				RenderEmpty(context, XferSystem.TryAccept(segments[3].TrimEnd('/'), username) ? 200 : 403);
+				break;
+			case "reject":
+				if (segments.Length < 4) { RenderEmpty(context, 404); return; }
+				RenderEmpty(context, XferSystem.TryReject(segments[3].TrimEnd('/'), username) ? 200 : 403);
+				break;
+			default:
+				RenderEmpty(context, 404);
+				break;
+			}
 		}
 
 		public static void Create()

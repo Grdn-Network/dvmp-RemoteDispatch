@@ -44,6 +44,7 @@
 		<EmbeddedResource Include="frontend/index.html" />
 		<EmbeddedResource Include="frontend/*.js" />
 		<EmbeddedResource Include="frontend/*.css" />
+		<EmbeddedResource Include="zones.json" />
 		<EmbeddedResource Include="frontend/licenses/*.png" />
 		<EmbeddedResource Include="frontend/signals/*.webp" />
 	</ItemGroup>
