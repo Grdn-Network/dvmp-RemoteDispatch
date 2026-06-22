@@ -4,6 +4,10 @@ const metersToDegrees = 360 / earthCircumference;
 
 var loggingEnabled = false;
 
+// True when the CTC schematic panel is shown instead of the Leaflet map.
+// Read by the data-update handlers so they only refresh the visible view.
+let ctcMode = false;
+
 /////////////////////
 // map
 
@@ -1820,6 +1824,28 @@ function buildSignalsSidebar(installed) {
 }
 
 let signalsInstalled = false;
+
+/////////////////////
+// CTC schematic mode toggle
+
+// Swaps between the Leaflet map and the schematic dispatch panel. The schematic
+// is lazily built on first activation (initCTC), then refreshed each time it is
+// shown so it reflects the latest data without waiting for the next push.
+const modeToggleBtn = document.getElementById('modeToggle');
+if (modeToggleBtn) {
+	modeToggleBtn.addEventListener('click', async () => {
+		ctcMode = !ctcMode;
+		document.getElementById('map').style.display = ctcMode ? 'none' : '';
+		document.getElementById('sidebar').style.display = ctcMode ? 'none' : '';
+		document.getElementById('search').style.display = ctcMode ? 'none' : '';
+		document.getElementById('ctc-panel').classList.toggle('active', ctcMode);
+		modeToggleBtn.textContent = ctcMode ? 'Map' : 'CTC';
+		if (ctcMode) {
+			await initCTC();
+			updateCTC();
+		}
+	});
+}
 
 const signalsReady = junctionsReady
 	.then(_ => fetch(new URL('/signals', location)))

@@ -1,0 +1,271 @@
+/* ============================================================
+   CTC dispatch panel — schematic track diagram (Run8 / SimSig
+   style). Shares the live data feed with the Leaflet map; the
+   mode toggle swaps which view is shown.
+   Consumes the --rd-* design tokens from style.css.
+   ============================================================ */
+
+/* Mode toggle button (top-right, left of the search box) */
+#modeToggle {
+	position: absolute;
+	top: 10px;
+	right: 220px;
+	z-index: 1001;
+	background: var(--rd-panel);
+	color: var(--rd-text);
+	border: 1px solid var(--rd-accent);
+	border-radius: var(--rd-radius);
+	padding: 6px 14px;
+	font: bold 13px "Lucida Console", "Monaco", monospace;
+	cursor: pointer;
+	letter-spacing: 0.05em;
+}
+#modeToggle:hover {
+	background: var(--rd-accent-dim);
+}
+
+/* The panel sits over the whole viewport; hidden until CTC mode is active */
+#ctc-panel {
+	position: absolute;
+	inset: 0;
+	background: var(--rd-bg);
+	display: none;
+	overflow: hidden;
+}
+#ctc-panel.active {
+	display: block;
+}
+
+#ctc-schematic {
+	width: 100%;
+	height: 100%;
+	display: block;
+	user-select: none;
+}
+
+/* ---- Track segments ---- */
+.ctc-track {
+	stroke: #2a3a4a;
+	stroke-width: 3;
+	fill: none;
+	stroke-linecap: round;
+	transition: stroke 0.2s;
+}
+.ctc-track.occupied {
+	stroke: var(--rd-danger);
+	stroke-width: 4;
+}
+.ctc-track.reserved {
+	stroke: var(--rd-ok);
+}
+
+/* ---- Signal indicators ---- */
+.ctc-signal {
+	cursor: pointer;
+	stroke: #000;
+	stroke-width: 0.5;
+}
+.ctc-signal.red    { fill: var(--rd-danger); }
+.ctc-signal.yellow { fill: var(--rd-warn); }
+.ctc-signal.green  { fill: var(--rd-ok); }
+.ctc-signal.unknown { fill: #555; }
+
+/* ---- Junction nodes ---- */
+.ctc-junction {
+	cursor: pointer;
+}
+.ctc-junction-node {
+	fill: var(--rd-text-muted);
+	stroke: #000;
+	stroke-width: 0.5;
+	transition: fill 0.15s;
+}
+.ctc-junction:hover .ctc-junction-node {
+	fill: var(--rd-accent);
+}
+
+/* ---- Train labels ---- */
+.ctc-train-label {
+	fill: var(--rd-text);
+	font-family: monospace;
+	font-size: 11px;
+	font-weight: bold;
+	paint-order: stroke;
+	stroke: var(--rd-bg);
+	stroke-width: 3px;
+	pointer-events: none;
+}
+
+/* ---- Zone overlays ---- */
+.ctc-zone-overlay {
+	fill-opacity: 0.07;
+	stroke-opacity: 0.35;
+	stroke-width: 1.5;
+	cursor: pointer;
+}
+.ctc-zone-overlay:hover {
+	fill-opacity: 0.14;
+}
+.ctc-zone-label {
+	fill: var(--rd-text-muted);
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	pointer-events: none;
+}
+.ctc-zone-owner {
+	fill: var(--rd-text);
+	font-size: 10px;
+	pointer-events: none;
+}
+
+/* ---- Collab panel (bottom-right): notes + chat ---- */
+#ctc-collab {
+	position: absolute;
+	bottom: 12px;
+	right: 12px;
+	width: 280px;
+	background: var(--rd-panel);
+	border: 1px solid var(--rd-panel-border);
+	border-radius: var(--rd-radius);
+	display: flex;
+	flex-direction: column;
+	max-height: 420px;
+	overflow: hidden;
+	z-index: 50;
+}
+#ctc-collab-tabs {
+	display: flex;
+	border-bottom: 1px solid var(--rd-panel-border);
+}
+.ctc-tab {
+	flex: 1;
+	background: transparent;
+	color: var(--rd-text-muted);
+	border: none;
+	padding: 8px;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+}
+.ctc-tab.active {
+	color: var(--rd-text);
+	background: var(--rd-accent-dim);
+	border-bottom: 2px solid var(--rd-accent);
+}
+
+/* Tab bodies — only one shown at a time via the .active class on #ctc-collab */
+#ctc-notes-area {
+	resize: none;
+	background: var(--rd-input-bg);
+	color: var(--rd-text);
+	border: none;
+	padding: 8px;
+	font-size: 12px;
+	font-family: monospace;
+	min-height: 140px;
+	box-sizing: border-box;
+}
+#ctc-chat-wrap {
+	display: flex;
+	flex-direction: column;
+	min-height: 140px;
+}
+#ctc-chat-log {
+	flex: 1;
+	overflow-y: auto;
+	padding: 6px 8px;
+	font-size: 11px;
+	max-height: 170px;
+	line-height: 1.4;
+}
+#ctc-chat-log b {
+	color: var(--rd-accent);
+}
+#ctc-chat-input {
+	background: var(--rd-input-bg);
+	color: var(--rd-text);
+	border: none;
+	border-top: 1px solid var(--rd-panel-border);
+	padding: 8px;
+	font-size: 12px;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+/* Collab view toggling: default shows notes, .chat-mode shows chat */
+#ctc-collab #ctc-chat-wrap { display: none; }
+#ctc-collab.chat-mode #ctc-notes-area { display: none; }
+#ctc-collab.chat-mode #ctc-chat-wrap { display: flex; }
+
+/* ---- Xfer offer banner ---- */
+#ctc-xfer-banner {
+	position: absolute;
+	top: 12px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: var(--rd-panel);
+	border: 1px solid var(--rd-accent);
+	border-radius: var(--rd-radius);
+	padding: 10px 16px;
+	display: none;
+	gap: 12px;
+	align-items: center;
+	color: var(--rd-text);
+	font-size: 13px;
+	z-index: 100;
+}
+#ctc-xfer-banner.visible {
+	display: flex;
+}
+#ctc-xfer-banner button {
+	background: var(--rd-accent);
+	color: #1a1200;
+	border: none;
+	border-radius: 4px;
+	padding: 4px 12px;
+	font-weight: bold;
+	cursor: pointer;
+}
+#ctc-xfer-banner button#ctc-xfer-reject {
+	background: var(--rd-danger);
+	color: #fff;
+}
+
+/* ---- Zone control strip (top-left of CTC) ---- */
+#ctc-zonebar {
+	position: absolute;
+	top: 12px;
+	left: 12px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	max-width: 360px;
+	z-index: 50;
+}
+.ctc-zone-chip {
+	background: var(--rd-panel);
+	border: 1px solid var(--rd-panel-border);
+	border-radius: var(--rd-radius);
+	padding: 4px 10px;
+	font-size: 11px;
+	color: var(--rd-text);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.ctc-zone-chip .ctc-zone-dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	flex-shrink: 0;
+}
+.ctc-zone-chip.owned-by-me {
+	border-color: var(--rd-accent);
+}
+.ctc-zone-chip .ctc-zone-chip-owner {
+	color: var(--rd-text-muted);
+	font-size: 10px;
+}

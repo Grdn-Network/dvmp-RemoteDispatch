@@ -6,6 +6,7 @@
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.7.1/dist/leaflet.css" integrity="sha256-BPfK9M5v34c2XP6p0cxVz1mUQLst0gTLk0mlc7kuodA=" crossorigin="anonymous">
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-sidebar-v2@3.2.3/css/leaflet-sidebar.min.css" integrity="sha256-10dwwxs/pdWEYoC56aJvmY3kbMMa9/3uSWWNkGcrGq8=" crossorigin="anonymous">
 	<link rel="stylesheet" href="res/style.css">
+	<link rel="stylesheet" href="res/ctc.css">
 	<script src="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/js/all.min.js" integrity="sha256-gSqw5G+Gss6YqyQlqyIkuQ0IRZUqGsDVq9c0tiF+mL8=" crossorigin="anonymous"></script>
 	<script src="https://cdn.jsdelivr.net/npm/leaflet@1.7.1/dist/leaflet-src.js" integrity="sha256-dG7rUAec0UN0e3nlMEuYJzsbK0rpoz4hBbNp0ir9iF8=" crossorigin="anonymous"></script>
 	<script src="res/leaflet.rotatedImageOverlay.js"></script>
@@ -188,10 +189,43 @@
 		</div>
 	</div>
 	<div id="map" class="dark" style="height:100vh"></div>
+
+	<!-- CTC schematic dispatch panel. Hidden until the mode toggle activates it;
+	     shares the live data feed with the map. -->
+	<div id="ctc-panel">
+		<svg id="ctc-schematic" xmlns="http://www.w3.org/2000/svg"></svg>
+
+		<!-- Zone claim/release chips (populated from /zones) -->
+		<div id="ctc-zonebar"></div>
+
+		<!-- Train transfer offer banner -->
+		<div id="ctc-xfer-banner">
+			<span id="ctc-xfer-text"></span>
+			<button id="ctc-xfer-accept">Accept</button>
+			<button id="ctc-xfer-reject">Reject</button>
+		</div>
+
+		<!-- Shared notepad + dispatcher chat -->
+		<div id="ctc-collab">
+			<div id="ctc-collab-tabs">
+				<button class="ctc-tab active" data-tab="notes">Notes</button>
+				<button class="ctc-tab" data-tab="chat">Chat</button>
+			</div>
+			<textarea id="ctc-notes-area" placeholder="Shared dispatcher notes…"></textarea>
+			<div id="ctc-chat-wrap">
+				<div id="ctc-chat-log"></div>
+				<input id="ctc-chat-input" type="text" placeholder="Send message…" autocomplete="off">
+			</div>
+		</div>
+	</div>
+
+	<button id="modeToggle" title="Toggle CTC / Map view">CTC</button>
 	<div id="search">
 		<input id="searchInput" type="text" placeholder="Go to…" autocomplete="off">
 		<ul id="searchResults"></ul>
 	</div>
+	<script src="res/ctc-layout.js"></script>
+	<script src="res/ctc.js"></script>
 	<script src="res/main.js"></script>
 </body>
 </html>
