@@ -96,6 +96,19 @@
 	stroke-width: 2;
 }
 
+/* Signal aspect popup — reuses the map's buildSignalPopup() content, which is
+   styled for a light Leaflet popup, so give it a light surface for legibility. */
+#ctc-signal-popup {
+	position: absolute;
+	background: #f4f4f4;
+	color: #111;
+	border-radius: 6px;
+	padding: 10px 12px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+	z-index: 200;
+	max-width: 260px;
+}
+
 /* ---- Train labels ---- */
 .ctc-train-label {
 	fill: var(--rd-text);

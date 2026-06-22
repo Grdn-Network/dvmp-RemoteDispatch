@@ -34,6 +34,7 @@ async function initCTC() {
 		return;
 	}
 	buildCtcElementMaps(svg);
+	wireCtcInteractions(svg);
 }
 
 function buildCtcElementMaps(svg) {
@@ -199,6 +200,65 @@ function updateTrainLabels() {
 			+ `y="${(p[1] - 6).toFixed(1)}">${ctcEscapeAttr(carId.slice(2))}</text>`);
 	});
 	layer.innerHTML = parts.join('');
+}
+
+/////////////////////
+// Control — throw junctions, set signal aspects from the panel
+
+// Single delegated click handler on the schematic: junctions toggle, signals
+// open an aspect popup, clicks elsewhere dismiss the popup. Reuses main.js's
+// toggleJunction() and buildSignalPopup() so behaviour matches the map exactly.
+function wireCtcInteractions(svg) {
+	svg.addEventListener('click', e => {
+		const jg = e.target.closest('.ctc-junction');
+		if (jg) {
+			const idx = jg.getAttribute('data-junction-id');
+			if (idx != null && typeof toggleJunction === 'function')
+				toggleJunction(Number(idx));
+			closeCtcSignalPopup();
+			return;
+		}
+		const sig = e.target.closest('.ctc-signal');
+		if (sig) {
+			openCtcSignalPopup(sig.getAttribute('data-signal-id'), e);
+			return;
+		}
+		closeCtcSignalPopup();
+	});
+}
+
+let ctcSignalPopupEl = null;
+
+function openCtcSignalPopup(signalId, evt) {
+	closeCtcSignalPopup();
+	if (!signalId || typeof signalMarkers === 'undefined') return;
+	const entry = signalMarkers.get(signalId);
+	if (!entry) return;
+	// buildSignalPopup returns '' (no state), a <strong> (Distant), or a wired
+	// container <div> with the manual-control + aspect-apply listeners attached.
+	const content = (typeof buildSignalPopup === 'function')
+		? buildSignalPopup(signalId, entry.type) : '';
+	if (!content) return;
+	const wrap = document.createElement('div');
+	wrap.id = 'ctc-signal-popup';
+	if (typeof content === 'string') wrap.innerHTML = content;
+	else wrap.appendChild(content);
+	const panel = document.getElementById('ctc-panel');
+	const rect = panel.getBoundingClientRect();
+	// Keep the popup inside the panel near the click point.
+	const x = Math.min(evt.clientX - rect.left + 12, rect.width - 280);
+	const y = Math.min(evt.clientY - rect.top + 12, rect.height - 200);
+	wrap.style.left = Math.max(8, x) + 'px';
+	wrap.style.top = Math.max(8, y) + 'px';
+	panel.appendChild(wrap);
+	ctcSignalPopupEl = wrap;
+}
+
+function closeCtcSignalPopup() {
+	if (ctcSignalPopupEl) {
+		ctcSignalPopupEl.remove();
+		ctcSignalPopupEl = null;
+	}
 }
 
 // Refresh all live overlays on the schematic. Called whenever car / junction /
