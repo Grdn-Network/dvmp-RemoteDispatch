@@ -1272,8 +1272,11 @@ const locoShapeNoseDepth = 10;
 function createCarShape(carId, carData) {
 	const isLoco = carId.slice(0, 2) == 'L-';
 	const lengthPx = carData.length * svgPixelsPerMeter;
+	const highlighted = isLoco && selectedLocos.has(carId);
+	const locoStroke = highlighted ? 'white' : 'black';
+	const locoStrokeW = highlighted ? '3%' : '1%';
 	const svg = isLoco
-		? `<polygon points="${-lengthPx / 2},-${carWidthPx / 2} ${-lengthPx / 2},${carWidthPx / 2} ${lengthPx / 2 - locoShapeNoseDepth},${carWidthPx / 2} ${lengthPx / 2},0 ${lengthPx / 2 - locoShapeNoseDepth},-${carWidthPx / 2}" fill="goldenrod" fill-opacity="70%" stroke="black" stroke-width="1%"/>`
+		? `<polygon points="${-lengthPx / 2},-${carWidthPx / 2} ${-lengthPx / 2},${carWidthPx / 2} ${lengthPx / 2 - locoShapeNoseDepth},${carWidthPx / 2} ${lengthPx / 2},0 ${lengthPx / 2 - locoShapeNoseDepth},-${carWidthPx / 2}" fill="goldenrod" fill-opacity="70%" stroke="${locoStroke}" stroke-width="${locoStrokeW}"/>`
 		: `<rect x="${-lengthPx / 2}" y="-10" width="${lengthPx}" height="20" fill-opacity="70%" stroke="black" stroke-width="1%"/>`;
 	return svg;
 }
@@ -1491,11 +1494,8 @@ function updateLocoListSidebar() {
 			if (target && target.matches('input[type=checkbox][data-loco-id]')) {
 				const locoId = target.getAttribute('data-loco-id');
 				if (target.checked) selectedLocos.add(locoId); else selectedLocos.delete(locoId);
-				const marker = carMarkers.get(locoId);
-				const carData = allCarData.get(locoId);
-				if (loggingEnabled)
-					console.info('Loco data', carData);
-				if (marker && carData) marker.setBounds(getCarOverlayBounds(locoId, carData));
+				if (loggingEnabled) console.info('Loco highlight:', locoId, target.checked);
+				updateCarMarker(locoId);
 			}
 		});
 		locoListBody._hasDelegatedLocoListener = true;
@@ -1680,9 +1680,9 @@ function applySignalVisibility() {
 			&& distantVisible;
 
 		if (visible) {
-			if (!map.hasLayer(marker)) marker.addTo(map);
+			if (!signalLayerGroup.hasLayer(marker)) marker.addTo(signalLayerGroup);
 		} else {
-			if (map.hasLayer(marker)) marker.remove();
+			if (signalLayerGroup.hasLayer(marker)) signalLayerGroup.removeLayer(marker);
 		}
 	});
 }
