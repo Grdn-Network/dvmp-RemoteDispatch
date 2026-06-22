@@ -1597,6 +1597,39 @@ const sessionId = uuidv4();
 const updateInterval = 100;
 let updateStart;
 
+// Apply one batch of {tag: data} updates to the map. Shared by the websocket
+// (onmessage) and the long-poll fallback so both render identically.
+function applyUpdate(updateData) {
+	Object.entries(updateData).forEach(([tag, data]) => {
+		switch (tag) {
+			case 'cars':
+				updateAllCars(data);
+				break;
+			case 'jobs':
+				updateAllJobs(data);
+				break;
+			case 'junctions':
+				updateAllJunctions(data);
+				break;
+			case 'player':
+				updatePlayerOverlays(data);
+				break;
+			case 'signals':
+				updateAllSignals(data);
+				break;
+			default:
+				const segments = tag.split('-');
+				switch (segments[0]) {
+					case 'trainset': updateCars(data); break;
+					case 'carguid': updateCar(data.id, data); break;
+				}
+		}
+	});
+	if (markerToFollow)
+		map.panTo(markerToFollow.getBounds().getCenter());
+}
+
+// Long-poll fallback (used only if the websocket can't be established).
 function updateOnce() {
 	updateStart = performance.now();
 	return fetch(new URL(`/updates/${sessionId}`, location))
@@ -1604,37 +1637,7 @@ function updateOnce() {
 			if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 			return resp.json();
 		})
-		.then(updateData => {
-			Object.entries(updateData).forEach(([tag, data]) => {
-				switch (tag) {
-					case 'cars':
-						updateAllCars(data);
-						break;
-					case 'jobs':
-						updateAllJobs(data);
-						break;
-					case 'junctions':
-						updateAllJunctions(data);
-						break;
-					case 'player':
-						updatePlayerOverlays(data);
-						break;
-					case 'signals':
-						updateAllSignals(data);
-						break;
-					default:
-						const segments = tag.split('-');
-						switch (segments[0]) {
-							case 'trainset': updateCars(data); break;
-							case 'carguid': updateCar(data.id, data); break;
-						}
-				}
-			});
-		})
-		.then(_ => {
-			if (markerToFollow)
-				map.panTo(markerToFollow.getBounds().getCenter());
-		});
+		.then(applyUpdate);
 }
 
 function updateLoop() {
@@ -1646,6 +1649,70 @@ function updateLoop() {
 			const timeToNextUpdate = (updateStart + updateInterval) - performance.now();
 			setTimeout(updateLoop, timeToNextUpdate);
 		});
+}
+
+/////////////////////
+// live updates transport
+
+// Prefer a websocket: one persistent connection, instant server push, and far
+// friendlier to the Cloudflare tunnel than the held-open long-poll. Falls back to
+// the /updates long-poll if the socket can't be established (e.g. an older server
+// without /ws), and auto-reconnects with backoff if a live socket drops.
+let ws = null;
+let wsReconnectDelay = 1000;
+const wsReconnectMax = 15000;
+let pollingFallbackActive = false;
+
+function startUpdates() {
+	connectWebSocket();
+}
+
+function connectWebSocket() {
+	const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+	const url = `${scheme}//${location.host}/ws`;
+	let opened = false;
+	try {
+		ws = new WebSocket(url);
+	} catch (e) {
+		console.error('WebSocket construction failed; falling back to polling:', e);
+		startPollingFallback();
+		return;
+	}
+
+	ws.onopen = () => {
+		opened = true;
+		wsReconnectDelay = 1000;
+		console.log('Dispatch websocket connected');
+	};
+	ws.onmessage = ev => {
+		try { applyUpdate(JSON.parse(ev.data)); }
+		catch (e) { console.error('Bad update frame:', e); }
+	};
+	ws.onerror = () => {
+		// onclose fires next; let it decide between reconnect and fallback.
+		try { ws.close(); } catch (e) { /* ignore */ }
+	};
+	ws.onclose = () => {
+		ws = null;
+		if (pollingFallbackActive) return;
+		if (!opened) {
+			// Never connected — server likely predates /ws. Use the long-poll fallback.
+			console.warn('WebSocket did not open; falling back to /updates polling');
+			startPollingFallback();
+			return;
+		}
+		// Was live then dropped (e.g. a tunnel hiccup) — reconnect with backoff.
+		console.warn(`Dispatch websocket closed; reconnecting in ${wsReconnectDelay}ms`);
+		setTimeout(connectWebSocket, wsReconnectDelay);
+		wsReconnectDelay = Math.min(wsReconnectDelay * 2, wsReconnectMax);
+	};
+}
+
+function startPollingFallback() {
+	if (pollingFallbackActive)
+		return;
+	pollingFallbackActive = true;
+	updateLoop();
 }
 
 /////////////////////
@@ -1775,5 +1842,5 @@ const signalsReady = junctionsReady
 signalsReady.then(_ => {
 	buildSignalsSidebar(signalsInstalled);
 	updateSignalLayerVisibility(); // apply zoom filter immediately after signals load
-	updateLoop();
+	startUpdates();
 });
