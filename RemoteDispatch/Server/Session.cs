@@ -112,6 +112,19 @@ namespace DvMod.RemoteDispatch
             }
         }
 
+        /// <summary>
+        /// Remove a session immediately (e.g. when a websocket disconnects) instead of
+        /// waiting for the idle timeout. Safe to call with an unknown sessionId.
+        /// </summary>
+        public static void EndSession(string sessionId)
+        {
+            lock (allSesssionsLock)
+            {
+                if (allSessions.Remove(sessionId))
+                    OnSessionEnded?.Invoke(sessionId);
+            }
+        }
+
         private static async Task<IEnumerable<string>> GetTags(string username, string sessionId)
         {
             Session session;

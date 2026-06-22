@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net;
+using System.Net.WebSockets;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -145,6 +146,12 @@ namespace DvMod.RemoteDispatch
 #endif
 				await HandleSignalRequest(context);
 				break;
+			case "ws":
+#if DEBUG
+				Main.Log("/ws endpoint hit");
+#endif
+				await HandleWebSocketRequest(context).ConfigureAwait(false);
+				break;
 			default:
 #if DEBUG
 				Main.Log("unknown endpoint hit");
@@ -152,6 +159,34 @@ namespace DvMod.RemoteDispatch
 				RenderEmpty(context, 404);
 				break;
 			}
+		}
+
+		// Live updates over a websocket (one persistent connection instead of long-polling
+		// /updates). Reuses the same per-session update machinery via WebSocketPump.
+		private static async Task HandleWebSocketRequest(HttpListenerContext context)
+		{
+			if (!context.Request.IsWebSocketRequest)
+			{
+				RenderEmpty(context, 400);
+				return;
+			}
+
+			HttpListenerWebSocketContext wsContext;
+			try
+			{
+				// Mono's ManagedWebSocket honours keepAliveInterval (ping frames), which keeps
+				// the connection alive through the Cloudflare tunnel.
+				wsContext = await context.AcceptWebSocketAsync(subProtocol: null, receiveBufferSize: 4096, keepAliveInterval: TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+			}
+			catch (Exception e)
+			{
+				Main.Log($"WebSocket upgrade failed: {e.Message}");
+				try { RenderEmpty(context, 500); } catch { }
+				return;
+			}
+
+			var username = context.User?.Identity?.Name ?? "";
+			await WebSocketPump.Run(wsContext.WebSocket, username).ConfigureAwait(false);
 		}
 
 		private static async void HandleCarRequest(HttpListenerContext context)
