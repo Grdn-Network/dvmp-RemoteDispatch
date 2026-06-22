@@ -556,6 +556,8 @@ function createJunctionOverlay(junctionId) {
 
 function updateJunctionOverlay(junctionId, selectedBranch) {
 	const junction = junctions[junctionId]
+	// Remember the live branch so the CTC schematic can draw the switch blade.
+	junction.selectedBranch = selectedBranch;
 	junction.marker.getElement().innerHTML = createJunctionShape(selectedBranch) + createJunctionLabel(junctionId);
 	const selectedTrackId = junction.branches[selectedBranch]
 	trackPolyLines.get(selectedTrackId).setStyle({ color: 'steelblue', dashArray: null });
@@ -586,6 +588,7 @@ function createJunctionMarker(p, junctionId, displayName) {
 
 function updateAllJunctions(states) {
 	states.forEach((state, index) => updateJunctionOverlay(index, state))
+	if (ctcMode) updateCTC();
 }
 
 /////////////////////
@@ -891,6 +894,7 @@ function updateAllSignals(signalsData) {
 			if (aspectSel) aspectSel.value = aspect;
 		}
 	});
+	if (ctcMode) updateCTC();
 }
 
 /////////////////////
@@ -1383,6 +1387,7 @@ function updateAllCars(updateCarData) {
 		if (!allCarData.has(id))
 			selectedLocos.delete(id);
 	updatePlayerLocoAssignments();
+	if (ctcMode) updateCTC();
 }
 
 function updateCars(cars) {
@@ -1390,6 +1395,7 @@ function updateCars(cars) {
 		updateCar(carId, carData));
 	updatePlayerLocoAssignments();
 	updateTrainBoard();
+	if (ctcMode) updateCTC();
 }
 
 /////////////////////
