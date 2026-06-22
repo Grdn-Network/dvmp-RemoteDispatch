@@ -270,3 +270,91 @@ function updateCTC() {
 	updateJunctionBlades();
 	updateTrainLabels();
 }
+
+/////////////////////
+// Collaboration — identity, shared notes, chat
+
+// This client's authenticated name, used for "owned-by-me" and xfer targeting.
+// The server enforces those anyway; this is only for UI.
+let myUsername = '';
+
+function fetchWhoami() {
+	fetch(new URL('/whoami', location))
+		.then(r => r.ok ? r.json() : null)
+		.then(d => { if (d && d.username) myUsername = d.username; })
+		.catch(() => {});
+}
+
+// Notes: the server broadcasts the whole notepad; apply it unless this client is
+// mid-edit (so a remote update doesn't clobber what the user is typing).
+function handleNotesUpdate(data) {
+	const el = document.getElementById('ctc-notes-area');
+	if (!el || !data) return;
+	if (document.activeElement === el) return;
+	if (typeof data.content === 'string') el.value = data.content;
+}
+
+// Chat: the server broadcasts the full recent log; rebuild it, keeping the view
+// pinned to the bottom if it already was.
+function handleChat(data) {
+	const log = document.getElementById('ctc-chat-log');
+	if (!log || !data || !Array.isArray(data.messages)) return;
+	const atBottom = Math.abs(log.scrollHeight - log.clientHeight - log.scrollTop) < 30;
+	log.innerHTML = data.messages
+		.map(m => `<div><b>${ctcEscapeAttr(m.user)}</b>: ${ctcEscapeAttr(m.text)}</div>`)
+		.join('');
+	if (atBottom) log.scrollTop = log.scrollHeight;
+}
+
+// Zone-state and xfer handlers are implemented in Step 8; defined here as no-ops
+// so applyUpdate's cases resolve until then.
+function handleZoneState(data) { }
+function handleXfer(data) { }
+
+let ctcNotesSyncTimer = null;
+
+function initCollab() {
+	const notes = document.getElementById('ctc-notes-area');
+	if (notes) {
+		notes.addEventListener('input', e => {
+			clearTimeout(ctcNotesSyncTimer);
+			const value = e.target.value;
+			ctcNotesSyncTimer = setTimeout(() => {
+				fetch(new URL('/notes', location), { method: 'POST', body: value })
+					.catch(err => console.error('Notes sync failed:', err));
+			}, 500);
+		});
+	}
+
+	const chatInput = document.getElementById('ctc-chat-input');
+	if (chatInput) {
+		chatInput.addEventListener('keydown', e => {
+			if (e.key === 'Enter' && e.target.value.trim()) {
+				fetch(new URL('/chat', location), {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ text: e.target.value.trim() }),
+				}).catch(err => console.error('Chat send failed:', err));
+				e.target.value = '';
+			}
+		});
+	}
+
+	// Notes / Chat tab switch within the collab panel.
+	const tabs = document.getElementById('ctc-collab-tabs');
+	const collab = document.getElementById('ctc-collab');
+	if (tabs && collab) {
+		tabs.addEventListener('click', e => {
+			const btn = e.target.closest('.ctc-tab');
+			if (!btn) return;
+			tabs.querySelectorAll('.ctc-tab').forEach(t => t.classList.remove('active'));
+			btn.classList.add('active');
+			collab.classList.toggle('chat-mode', btn.dataset.tab === 'chat');
+		});
+	}
+
+	fetchWhoami();
+}
+
+// ctc.js loads after the panel markup, so the elements exist now.
+initCollab();

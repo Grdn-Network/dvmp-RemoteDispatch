@@ -1627,6 +1627,18 @@ function applyUpdate(updateData) {
 			case 'signals':
 				updateAllSignals(data);
 				break;
+			case 'notes':
+				handleNotesUpdate(data);
+				break;
+			case 'chat':
+				handleChat(data);
+				break;
+			case 'zones':
+				handleZoneState(data);
+				break;
+			case 'xfer':
+				handleXfer(data);
+				break;
 			default:
 				const segments = tag.split('-');
 				switch (segments[0]) {
