@@ -195,6 +195,10 @@ namespace DvMod.RemoteDispatch
 		{
 			if (!context.Request.IsWebSocketRequest)
 			{
+				// The request reached us but lacks the Upgrade/Connection headers — usually
+				// a proxy (e.g. Cloudflare) stripped them or didn't forward the upgrade.
+				Main.Log($"/ws: not a websocket upgrade (Upgrade='{context.Request.Headers["Upgrade"]}', "
+					+ $"Connection='{context.Request.Headers["Connection"]}') — proxy not forwarding the upgrade?");
 				RenderEmpty(context, 400);
 				return;
 			}
