@@ -332,6 +332,50 @@
 	color: #fff;
 }
 
+/* ---- Bulk signal control toolbar (bottom-left of CTC) ---- */
+#ctc-toolbar {
+	position: absolute;
+	bottom: 12px;
+	left: 12px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	background: var(--rd-panel);
+	border: 1px solid var(--rd-panel-border);
+	border-radius: var(--rd-radius);
+	padding: 6px 10px;
+	z-index: 50;
+	font-size: 12px;
+	color: var(--rd-text);
+}
+#ctc-toolbar .ctc-toolbar-label {
+	color: var(--rd-text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	font-size: 11px;
+}
+#ctc-toolbar button {
+	background: var(--rd-input-bg);
+	color: var(--rd-text);
+	border: 1px solid var(--rd-panel-border);
+	border-radius: 4px;
+	padding: 4px 9px;
+	font-size: 12px;
+	cursor: pointer;
+}
+#ctc-toolbar button:hover {
+	border-color: var(--rd-accent);
+}
+#ctc-toolbar #ctc-sig-all:hover,
+#ctc-toolbar #ctc-sig-view:hover {
+	background: var(--rd-accent-dim);
+}
+#ctc-toolbar #ctc-toolbar-status {
+	color: var(--rd-accent);
+	font-size: 11px;
+	min-width: 60px;
+}
+
 /* ---- Zone control strip (top-left of CTC) ---- */
 #ctc-zonebar {
 	position: absolute;

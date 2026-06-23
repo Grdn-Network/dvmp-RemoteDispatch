@@ -137,6 +137,14 @@ namespace DvMod.RemoteDispatch
 #if DEBUG
 				Main.Log("/signals endpoint hit");
 #endif
+				// POST /signals/bulk — set mode (+ optional aspect) on many signals at once.
+				if (request.Url.Segments.Length >= 3
+					&& request.Url.Segments[2].TrimEnd('/') == "bulk"
+					&& request.HttpMethod == "POST")
+				{
+					HandleSignalsBulkRequest(context);
+					break;
+				}
 				string signalsJson = Main.settings.featureFlags.enableSignals ? JsonConvert.SerializeObject(SignalsShim.GetAllSignalsData()) : JsonConvert.SerializeObject(new JObject());
 				Render200(context, ContentTypes.Json, signalsJson);
 				break;
@@ -378,6 +386,54 @@ namespace DvMod.RemoteDispatch
 			}
 
 			RenderEmpty(context, success ? 204 : 400);
+		}
+
+		// POST /signals/bulk  body: { "signalIds": [...], "mode": "Manual"|"Automatic", "aspect": "S1"? }
+		// Sets mode (and optional aspect, when going Manual) on many signals at once.
+		// Returns { requested, applied } so the client can confirm the API took the change.
+		private static void HandleSignalsBulkRequest(HttpListenerContext context)
+		{
+			if (!Main.settings.featureFlags.enableSignals)
+			{
+				RenderEmpty(context, 409);
+				return;
+			}
+			if (!Main.settings.permissions.HasSignalControlPermission(context.User.Identity.Name))
+			{
+				RenderEmpty(context, 403);
+				return;
+			}
+			try
+			{
+				var body = JObject.Parse(ReadRequestBody(context));
+				var mode = (string?)body["mode"];
+				var aspect = (string?)body["aspect"];
+				var idsArr = body["signalIds"] as JArray;
+				if (idsArr == null || idsArr.Count == 0 || string.IsNullOrEmpty(mode))
+				{
+					RenderEmpty(context, 400);
+					return;
+				}
+				var user = CollabUser(context);
+				int requested = 0, applied = 0;
+				foreach (var t in idsArr)
+				{
+					var id = (string?)t;
+					if (string.IsNullOrEmpty(id)) continue;
+					requested++;
+					if (!ZoneSystem.CanControlSignal(user, id!)) continue;
+					bool ok = SignalsShim.SetSignalMode(id!, mode!);
+					if (ok && mode == "Manual" && !string.IsNullOrEmpty(aspect))
+						SignalsShim.SetSignalAspect(id!, aspect!);
+					if (ok) applied++;
+				}
+				Render200(context, new JObject { ["requested"] = requested, ["applied"] = applied });
+			}
+			catch (Exception e)
+			{
+				Main.Warning($"Bad /signals/bulk request: {e.Message}");
+				RenderEmpty(context, 400);
+			}
 		}
 
 		private static async Task HandleUpdatesRequest(HttpListenerContext context)

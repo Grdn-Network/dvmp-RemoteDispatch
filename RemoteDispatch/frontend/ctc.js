@@ -374,6 +374,65 @@ function updateCTC() {
 }
 
 /////////////////////
+// Bulk signal control — take all / a section (current view) / none under manual
+
+function ctcAllSignalIds() {
+	return [...ctcSignalEls.keys()];
+}
+
+// Signals whose dot currently falls inside the visible viewBox.
+function ctcSignalIdsInView() {
+	const ids = [];
+	ctcSignalEls.forEach((el, id) => {
+		const dot = el.querySelector('.ctc-signal-dot');
+		if (!dot) return;
+		const cx = parseFloat(dot.getAttribute('cx'));
+		const cy = parseFloat(dot.getAttribute('cy'));
+		if (cx >= ctcViewBox.x && cx <= ctcViewBox.x + ctcViewBox.w
+			&& cy >= ctcViewBox.y && cy <= ctcViewBox.y + ctcViewBox.h)
+			ids.push(id);
+	});
+	return ids;
+}
+
+// POST a bulk mode/aspect change and report how many the API actually applied.
+function ctcBulkSignals(ids, mode, aspect) {
+	if (!ids.length) { ctcToolbarStatus('no signals'); return; }
+	const body = { signalIds: ids, mode };
+	if (aspect) body.aspect = aspect;
+	fetch(new URL('/signals/bulk', location), {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+	})
+		.then(r => r.ok ? r.json() : null)
+		.then(d => {
+			if (!d) { ctcToolbarStatus('failed'); return; }
+			const verb = mode === 'Manual' ? 'held' : 'released';
+			ctcToolbarStatus(`${verb} ${d.applied}/${d.requested}`);
+		})
+		.catch(err => { console.error('Bulk signals failed:', err); ctcToolbarStatus('failed'); });
+}
+
+let ctcToolbarStatusTimer = null;
+function ctcToolbarStatus(msg) {
+	const el = document.getElementById('ctc-toolbar-status');
+	if (!el) return;
+	el.textContent = msg;
+	clearTimeout(ctcToolbarStatusTimer);
+	ctcToolbarStatusTimer = setTimeout(() => { el.textContent = ''; }, 4000);
+}
+
+function initCtcToolbar() {
+	const all = document.getElementById('ctc-sig-all');
+	const view = document.getElementById('ctc-sig-view');
+	const release = document.getElementById('ctc-sig-release');
+	if (all) all.addEventListener('click', () => ctcBulkSignals(ctcAllSignalIds(), 'Manual', 'S1'));
+	if (view) view.addEventListener('click', () => ctcBulkSignals(ctcSignalIdsInView(), 'Manual', 'S1'));
+	if (release) release.addEventListener('click', () => ctcBulkSignals(ctcAllSignalIds(), 'Automatic', null));
+}
+
+/////////////////////
 // Collaboration — identity, shared notes, chat
 
 // This client's authenticated name, used for "owned-by-me" and xfer targeting.
@@ -617,6 +676,7 @@ function initCollab() {
 				.catch(err => console.error('Xfer reject failed:', err));
 	});
 
+	initCtcToolbar();
 	fetchWhoami();
 }
 

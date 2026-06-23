@@ -198,6 +198,15 @@
 		<!-- Zone claim/release chips (populated from /zones) -->
 		<div id="ctc-zonebar"></div>
 
+		<!-- Bulk signal control: take all / in-view / none under manual red -->
+		<div id="ctc-toolbar">
+			<span class="ctc-toolbar-label">Signals</span>
+			<button id="ctc-sig-all" title="Set every signal to manual red">Hold all</button>
+			<button id="ctc-sig-view" title="Hold the signals currently in view">Hold view</button>
+			<button id="ctc-sig-release" title="Return all signals to automatic">Release</button>
+			<span id="ctc-toolbar-status"></span>
+		</div>
+
 		<!-- Train transfer offer banner -->
 		<div id="ctc-xfer-banner">
 			<span id="ctc-xfer-text"></span>
