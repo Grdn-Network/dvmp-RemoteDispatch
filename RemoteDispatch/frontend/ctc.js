@@ -467,6 +467,8 @@ function initCtcToolbar() {
 
 	const routeBtn = document.getElementById('ctc-route-btn');
 	if (routeBtn) routeBtn.addEventListener('click', toggleRouteMode);
+	const clearBtn = document.getElementById('ctc-route-clear');
+	if (clearBtn) clearBtn.addEventListener('click', clearRoutes);
 	const setBtn = document.getElementById('ctc-route-set');
 	if (setBtn) setBtn.addEventListener('click', confirmRoute);
 	const cancelBtn = document.getElementById('ctc-route-cancel');
@@ -487,6 +489,8 @@ let ctcGraph = null;        // { adj: Map<node,[{track,to}]>, nodePos: Map<node,
 let ctcRouteMode = false;
 let ctcRouteA = null;       // first picked junction index
 let ctcRoutePath = null;    // { a, b, tracks:[...] }
+const ctcReservedTracks = new Set(); // tracks held by an active route — new routes can't cross them
+const ctcRouteSignals = new Set();   // signals greened by active routes (restored to red on clear)
 
 const CTC_NODE_Q = 1e-5;    // ~1.1 m endpoint-merge grid
 function ctcNodeKey(lat, lng) {
@@ -543,6 +547,7 @@ function findRoute(aIndex, bIndex) {
 		const n = queue.shift();
 		if (n === goal) break;
 		for (const e of ctcGraph.adj.get(n) || []) {
+			if (ctcReservedTracks.has(e.track)) continue; // can't cross another active route
 			if (seen.has(e.to)) continue;
 			seen.add(e.to);
 			prev.set(e.to, { from: n, track: e.track });
@@ -658,7 +663,31 @@ function applyRoute(tracks) {
 		});
 	}
 	if (sigIds.length) ctcBulkSignals(sigIds, 'Manual', 'S2');
+	// Reserve the route: hold its tracks (so a conflicting route can't cross them —
+	// it will terminate at the boundary, where the off-route signal stays red) and
+	// show them green; remember the greened signals so Clear can restore them.
+	for (const t of tracks) {
+		ctcReservedTracks.add(t);
+		const el = ctcTrackEls.get(t);
+		if (el) el.classList.add('reserved');
+	}
+	sigIds.forEach(id => ctcRouteSignals.add(id));
 	ctcToolbarStatus(`route set: ${thrown} switch${thrown === 1 ? '' : 'es'}, ${sigIds.length} signals`);
+}
+
+// Release all active routes: drop reservations, un-green the tracks, and put their
+// signals back to red (stop).
+function clearRoutes() {
+	if (!ctcReservedTracks.size && !ctcRouteSignals.size) {
+		ctcToolbarStatus('no active routes');
+		return;
+	}
+	ctcTrackEls.forEach(el => el.classList.remove('reserved'));
+	ctcReservedTracks.clear();
+	const sigs = [...ctcRouteSignals];
+	ctcRouteSignals.clear();
+	if (sigs.length) ctcBulkSignals(sigs, 'Manual', 'S1');
+	ctcToolbarStatus(`cleared ${sigs.length} signal${sigs.length === 1 ? '' : 's'}`);
 }
 
 /////////////////////
