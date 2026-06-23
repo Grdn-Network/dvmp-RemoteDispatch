@@ -1873,8 +1873,10 @@ if (modeToggleBtn) {
 	modeToggleBtn.addEventListener('click', async () => {
 		ctcMode = !ctcMode;
 		document.getElementById('map').style.display = ctcMode ? 'none' : '';
-		document.getElementById('sidebar').style.display = ctcMode ? 'none' : '';
 		document.getElementById('search').style.display = ctcMode ? 'none' : '';
+		// Keep the RD sidebar (train board, jobs, loco list, loco control, settings,
+		// signals filter) available in CTC mode too — it overlays the schematic's left
+		// edge, where the zone bar / toolbar are shifted clear of it.
 		document.getElementById('ctc-panel').classList.toggle('active', ctcMode);
 		modeToggleBtn.textContent = ctcMode ? 'Map' : 'CTC';
 		if (ctcMode) {

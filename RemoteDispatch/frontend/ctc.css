@@ -351,7 +351,7 @@
 #ctc-toolbar {
 	position: absolute;
 	bottom: 12px;
-	left: 12px;
+	left: 52px; /* clear the RD sidebar's icon column */
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -442,7 +442,7 @@
 #ctc-zonebar {
 	position: absolute;
 	top: 12px;
-	left: 12px;
+	left: 52px; /* clear the RD sidebar's icon column */
 	display: flex;
 	flex-wrap: wrap;
 	gap: 6px;

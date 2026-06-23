@@ -85,7 +85,7 @@ function ctcClientToSvg(svg, clientX, clientY) {
 
 function wireCtcPanZoom(svg) {
 	const ASPECT = CTC_VIEW_H / CTC_VIEW_W;
-	const MIN_W = CTC_VIEW_W / 14;   // deepest zoom-in
+	const MIN_W = CTC_VIEW_W / 60;   // deepest zoom-in (was /14 — couldn't see detail)
 	const MAX_W = CTC_VIEW_W * 1.2;  // furthest zoom-out
 	const INTERACTIVE = '.ctc-junction, .ctc-signal, .ctc-train-label';
 

@@ -51,16 +51,17 @@ function ctcEscapeAttr(v) {
 		.replace(/>/g, '&gt;');
 }
 
-// Fan the n-th co-located schematic signal onto a small ring (pixel space) so
-// even many signals sharing a junction never sit on top of each other.
-function fanSchematicSignal(x, y, n) {
-	if (n === 0) return [x, y];
+// Local-space offset for the n-th co-located signal, on a small ring. Applied
+// INSIDE the marker's scaled group, so the on-screen separation is constant and
+// the marker still sits at its true position (it doesn't drift away when zoomed).
+function fanLocalOffset(n) {
+	if (n === 0) return [0, 0];
 	const perRing = 6;
 	const k = n - 1;
 	const ring = 1 + Math.floor(k / perRing);
 	const angle = (k % perRing) * (Math.PI * 2 / perRing) + ring * 0.6;
 	const r = 11 * ring;
-	return [x + r * Math.cos(angle), y + r * Math.sin(angle)];
+	return [r * Math.cos(angle), r * Math.sin(angle)];
 }
 
 // Gather geometry from the already-loaded map layers.
@@ -140,7 +141,8 @@ async function buildSchematic() {
 			})
 			.join(' ');
 		const cls = 'ctc-track' + (t.siding ? ' ctc-track-siding' : '');
-		parts.push(`<polyline class="${cls}" data-track-id="${ctcEscapeAttr(t.id)}" points="${pts}" />`);
+		parts.push(`<polyline class="${cls}" vector-effect="non-scaling-stroke" `
+			+ `data-track-id="${ctcEscapeAttr(t.id)}" points="${pts}" />`);
 	}
 	parts.push('</g>');
 
@@ -154,24 +156,25 @@ async function buildSchematic() {
 		const [bx, by] = ctcProjection(s.lat, s.lng);
 		const n = sigBaseSeen.filter(p => Math.hypot(p[0] - bx, p[1] - by) < 8).length;
 		sigBaseSeen.push([bx, by]);
-		const [x, y] = fanSchematicSignal(bx, by, n);
+		// The group sits at the signal's TRUE position (translate) and is scaled to
+		// keep a constant on-screen size; the fan offset is applied in the group's
+		// local (scaled) space so co-located signals stay a constant distance apart
+		// on screen and never fling away from their real spot when zoomed in.
+		const [ox, oy] = fanLocalOffset(n);
 		const esc = ctcEscapeAttr(s.id);
-		// Drawables are centred at the group origin; the group's transform
-		// (translate + zoom-compensating scale, applied by updateMarkerScales)
-		// keeps the marker a constant size on screen at any zoom.
 		let tick = '';
 		if (s.direction != null) {
 			// North-up, Y-flipped screen vector: (sin θ, −cos θ).
 			const th = s.direction * Math.PI / 180;
 			const L = 9;
-			tick = `<line class="ctc-signal-tick" x1="0" y1="0" `
-				+ `x2="${(L * Math.sin(th)).toFixed(1)}" y2="${(-L * Math.cos(th)).toFixed(1)}"/>`;
+			tick = `<line class="ctc-signal-tick" x1="${ox.toFixed(1)}" y1="${oy.toFixed(1)}" `
+				+ `x2="${(ox + L * Math.sin(th)).toFixed(1)}" y2="${(oy - L * Math.cos(th)).toFixed(1)}"/>`;
 		}
 		parts.push(`<g class="ctc-signal ctc-scaled unknown" data-signal-id="${esc}" `
-			+ `data-x="${x.toFixed(1)}" data-y="${y.toFixed(1)}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">`
-			+ `<circle class="ctc-signal-hit" cx="0" cy="0" r="11"/>`
+			+ `data-x="${bx.toFixed(1)}" data-y="${by.toFixed(1)}" transform="translate(${bx.toFixed(1)} ${by.toFixed(1)})">`
+			+ `<circle class="ctc-signal-hit" cx="${ox.toFixed(1)}" cy="${oy.toFixed(1)}" r="11"/>`
 			+ tick
-			+ `<circle class="ctc-signal-dot" cx="0" cy="0" r="5"/>`
+			+ `<circle class="ctc-signal-dot" cx="${ox.toFixed(1)}" cy="${oy.toFixed(1)}" r="5"/>`
 			+ `<title>${esc}</title></g>`);
 	}
 	parts.push('</g>');
