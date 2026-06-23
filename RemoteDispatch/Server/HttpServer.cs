@@ -149,7 +149,7 @@ namespace DvMod.RemoteDispatch
 			case "whoami":
 				// Lets the web client learn its own authenticated name so it can do
 				// "owned-by-me" / xfer-targeting checks the server enforces anyway.
-				Render200(context, new JObject { ["username"] = context.User?.Identity?.Name ?? "" });
+				Render200(context, new JObject { ["username"] = CollabUser(context) });
 				break;
 			case "zones":
 				Render200(context, ZoneSystem.GetZoneStateJObject());
@@ -450,6 +450,16 @@ namespace DvMod.RemoteDispatch
 			Render200(context, CarData.GetTrainsetDataJson(trainsetId));
 		}
 
+		// Identity for the collaboration features (zones/notes/chat/xfer). A solo /
+		// no-password session is anonymous (empty name); fall back to "host" so zone
+		// claims succeed and "owned-by-me" resolves. In multiplayer, real names come
+		// from auth. (Multiple simultaneous anonymous clients share the "host" identity.)
+		private static string CollabUser(HttpListenerContext context)
+		{
+			var name = context.User?.Identity?.Name;
+			return string.IsNullOrEmpty(name) ? "host" : name;
+		}
+
 		private static string ReadRequestBody(HttpListenerContext context, int maxBytes = 65536)
 		{
 			using var ms = new MemoryStream();
@@ -474,7 +484,7 @@ namespace DvMod.RemoteDispatch
 				RenderEmpty(context, 404);
 				return;
 			}
-			var username = context.User?.Identity?.Name ?? "";
+			var username = CollabUser(context);
 			var zoneId = segments[2].TrimEnd('/');
 			switch (segments[3].TrimEnd('/'))
 			{
@@ -517,7 +527,7 @@ namespace DvMod.RemoteDispatch
 				RenderEmpty(context, 405);
 				return;
 			}
-			var username = context.User?.Identity?.Name ?? "";
+			var username = CollabUser(context);
 			try
 			{
 				var body = ReadRequestBody(context);
@@ -541,7 +551,7 @@ namespace DvMod.RemoteDispatch
 		private static void HandleXferRequest(HttpListenerContext context)
 		{
 			var segments = context.Request.Url.Segments;
-			var username = context.User?.Identity?.Name ?? "";
+			var username = CollabUser(context);
 
 			if (segments.Length == 2 && context.Request.HttpMethod == "GET")
 			{
