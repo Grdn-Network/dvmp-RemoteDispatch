@@ -35,6 +35,99 @@ async function initCTC() {
 	}
 	buildCtcElementMaps(svg);
 	wireCtcInteractions(svg);
+	wireCtcPanZoom(svg);
+}
+
+/////////////////////
+// Pan / zoom — pure client-side viewBox manipulation, no server state, so any
+// number of simultaneous RD players each navigate the schematic independently.
+
+const ctcViewBox = { x: 0, y: 0, w: CTC_VIEW_W, h: CTC_VIEW_H };
+let ctcWasDragging = false;
+
+function applyCtcViewBox(svg) {
+	svg.setAttribute('viewBox',
+		`${ctcViewBox.x.toFixed(2)} ${ctcViewBox.y.toFixed(2)} ${ctcViewBox.w.toFixed(2)} ${ctcViewBox.h.toFixed(2)}`);
+}
+
+function resetCtcViewBox(svg) {
+	ctcViewBox.x = 0; ctcViewBox.y = 0;
+	ctcViewBox.w = CTC_VIEW_W; ctcViewBox.h = CTC_VIEW_H;
+	applyCtcViewBox(svg);
+}
+
+// Screen point -> current SVG/user coordinates, honouring preserveAspectRatio.
+function ctcClientToSvg(svg, clientX, clientY) {
+	const ctm = svg.getScreenCTM();
+	if (!ctm) return null;
+	const pt = svg.createSVGPoint();
+	pt.x = clientX; pt.y = clientY;
+	return pt.matrixTransform(ctm.inverse());
+}
+
+function wireCtcPanZoom(svg) {
+	const ASPECT = CTC_VIEW_H / CTC_VIEW_W;
+	const MIN_W = CTC_VIEW_W / 14;   // deepest zoom-in
+	const MAX_W = CTC_VIEW_W * 1.2;  // furthest zoom-out
+	const INTERACTIVE = '.ctc-junction, .ctc-signal, .ctc-train-label';
+
+	// Wheel = zoom toward the cursor (the point under the cursor stays put).
+	svg.addEventListener('wheel', e => {
+		e.preventDefault();
+		const p = ctcClientToSvg(svg, e.clientX, e.clientY);
+		if (!p) return;
+		const factor = e.deltaY < 0 ? 0.85 : 1.18;
+		const newW = Math.min(MAX_W, Math.max(MIN_W, ctcViewBox.w * factor));
+		const newH = newW * ASPECT;
+		const fx = (p.x - ctcViewBox.x) / ctcViewBox.w;
+		const fy = (p.y - ctcViewBox.y) / ctcViewBox.h;
+		ctcViewBox.x = p.x - fx * newW;
+		ctcViewBox.y = p.y - fy * newH;
+		ctcViewBox.w = newW;
+		ctcViewBox.h = newH;
+		applyCtcViewBox(svg);
+	}, { passive: false });
+
+	// Drag empty space = pan. A real drag (>4px) sets ctcWasDragging so the
+	// click handler skips the junction-toggle/signal-popup that would otherwise
+	// fire at pointerup.
+	let panning = false, startCX = 0, startCY = 0, startVBx = 0, startVBy = 0, sa = 1, sd = 1, moved = 0;
+	svg.addEventListener('pointerdown', e => {
+		if (e.button !== 0) return;
+		if (e.target.closest(INTERACTIVE)) return;
+		const ctm = svg.getScreenCTM();
+		if (!ctm) return;
+		panning = true; moved = 0;
+		startCX = e.clientX; startCY = e.clientY;
+		startVBx = ctcViewBox.x; startVBy = ctcViewBox.y;
+		sa = ctm.a || 1; sd = ctm.d || 1;
+		try { svg.setPointerCapture(e.pointerId); } catch (_) { }
+		svg.style.cursor = 'grabbing';
+	});
+	svg.addEventListener('pointermove', e => {
+		if (!panning) return;
+		const dxC = e.clientX - startCX, dyC = e.clientY - startCY;
+		moved = Math.max(moved, Math.abs(dxC) + Math.abs(dyC));
+		ctcViewBox.x = startVBx - dxC / sa;
+		ctcViewBox.y = startVBy - dyC / sd;
+		applyCtcViewBox(svg);
+	});
+	function endPan(e) {
+		if (!panning) return;
+		panning = false;
+		svg.style.cursor = '';
+		try { svg.releasePointerCapture(e.pointerId); } catch (_) { }
+		if (moved > 4) ctcWasDragging = true;
+	}
+	svg.addEventListener('pointerup', endPan);
+	svg.addEventListener('pointercancel', endPan);
+
+	// Double-click empty space resets to full view.
+	svg.addEventListener('dblclick', e => {
+		if (e.target.closest(INTERACTIVE)) return;
+		e.preventDefault();
+		resetCtcViewBox(svg);
+	});
 }
 
 function buildCtcElementMaps(svg) {
@@ -211,6 +304,8 @@ function updateTrainLabels() {
 // toggleJunction() and buildSignalPopup() so behaviour matches the map exactly.
 function wireCtcInteractions(svg) {
 	svg.addEventListener('click', e => {
+		// A click that ends a pan-drag shouldn't throw a switch / open a popup.
+		if (ctcWasDragging) { ctcWasDragging = false; return; }
 		const jg = e.target.closest('.ctc-junction');
 		if (jg) {
 			const idx = jg.getAttribute('data-junction-id');

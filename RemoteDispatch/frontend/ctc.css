@@ -41,6 +41,8 @@
 	height: 100%;
 	display: block;
 	user-select: none;
+	cursor: grab;
+	touch-action: none;
 }
 
 /* ---- Track segments ---- */
