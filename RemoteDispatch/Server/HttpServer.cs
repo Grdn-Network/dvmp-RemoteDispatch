@@ -695,9 +695,22 @@ namespace DvMod.RemoteDispatch
 			}
 			else
 			{
-				// Static assets embedded in the DLL don't change between game restarts.
-				// Tell the browser to cache them for 1 hour so repeated page loads are instant.
-				context.Response.Headers.Add("Cache-Control", "public, max-age=3600");
+				// The page itself and its code change between mod builds. Caching those as
+				// "public, max-age" made the browser AND the Cloudflare edge serve a stale
+				// version for up to an hour after a redeploy. Mark them no-store so a new
+				// build always takes effect; images and other assets can still cache.
+				bool volatileAsset = resourceName.EndsWith(".html")
+					|| resourceName.EndsWith(".js")
+					|| resourceName.EndsWith(".css");
+				if (volatileAsset)
+				{
+					context.Response.Headers.Add("Cache-Control", "no-store, no-cache, must-revalidate");
+					context.Response.Headers.Add("Pragma", "no-cache");
+				}
+				else
+				{
+					context.Response.Headers.Add("Cache-Control", "public, max-age=3600");
+				}
 				stream.CopyTo(context.Response.OutputStream);
 				context.Response.Close();
 			}
