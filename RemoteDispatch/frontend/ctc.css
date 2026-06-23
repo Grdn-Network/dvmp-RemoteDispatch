@@ -61,16 +61,32 @@
 	stroke: var(--rd-ok);
 }
 
-/* ---- Signal indicators ---- */
+/* ---- Signal indicators ----
+   Each signal is a <g class="ctc-signal {state}"> with a transparent hit-circle
+   (big click target), a facing-direction tick, and the coloured dot. */
 .ctc-signal {
 	cursor: pointer;
+}
+.ctc-signal-hit {
+	fill: transparent;
+	stroke: none;
+	pointer-events: all;
+}
+.ctc-signal-dot {
 	stroke: #000;
 	stroke-width: 0.5;
+	fill: #555;
 }
-.ctc-signal.red    { fill: var(--rd-danger); }
-.ctc-signal.yellow { fill: var(--rd-warn); }
-.ctc-signal.green  { fill: var(--rd-ok); }
-.ctc-signal.unknown { fill: #555; }
+.ctc-signal.red    .ctc-signal-dot { fill: var(--rd-danger); }
+.ctc-signal.yellow .ctc-signal-dot { fill: var(--rd-warn); }
+.ctc-signal.green  .ctc-signal-dot { fill: var(--rd-ok); }
+.ctc-signal.unknown .ctc-signal-dot { fill: var(--rd-danger); } /* default red (safe) */
+.ctc-signal-tick {
+	stroke: #cbd5e1;
+	stroke-width: 1.5;
+	stroke-linecap: round;
+	pointer-events: none;
+}
 
 /* ---- Junction nodes ---- */
 .ctc-junction {

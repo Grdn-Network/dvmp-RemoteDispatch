@@ -597,10 +597,22 @@ function updateAllJunctions(states) {
 const signalMarkers = new Map();
 const signalIconAnchor = [12, 12];
 // Threshold for detecting signals at the same junction. Signals within this distance
-// get a lateral nudge so each is individually visible and clickable.
-// ~0.0002° ≈ 22 m in-game, which maps to roughly 18–20 px at zoom 17 (the signal
-// minimum zoom) — enough to separate the 16 px-wide signal icons without them overlapping.
-const SIGNAL_STACK_DEG = 0.0002;
+// are fanned out so each is individually visible and clickable.
+// ~0.0003° ≈ 33 m in-game — slightly wider than before so near-co-located signals
+// (whose ~20 px icons still overlap) also get separated.
+const SIGNAL_STACK_DEG = 0.0003;
+
+// Fan the n-th co-located signal (1-based stackIndex) onto a small ring around the
+// base point — phyllotaxis-style on growing rings — so even many signals sharing a
+// junction never sit on top of each other.
+function fanSignalPosition(base, stackIndex) {
+	const perRing = 6;
+	const k = stackIndex - 1;
+	const ring = 1 + Math.floor(k / perRing);
+	const angle = (k % perRing) * (Math.PI * 2 / perRing) + ring * 0.6;
+	const r = SIGNAL_STACK_DEG * 1.6 * ring;
+	return [base[0] + r * Math.sin(angle), base[1] + r * Math.cos(angle)];
+}
 
 
 function makeSafeSignalId(id) {
@@ -694,9 +706,9 @@ function createSignalMarker(signalId, signalData) {
 	// Direction (Y-rotation degrees) from DVSignals; null when not available.
 	const direction = signalData.Direction ?? null;
 
-	// Count signals already placed at essentially the same spot (opposite-facing junction
-	// signals share a coordinate). Nudge each additional one slightly north so they are
-	// individually visible and clickable at dispatch zoom levels.
+	// Count signals already placed at essentially the same spot (opposite-facing
+	// junction signals share a coordinate). Fan each additional one out around the
+	// base point so none hides under another and all stay individually clickable.
 	let stackIndex = 0;
 	signalMarkers.forEach(entry => {
 		if (!entry.position) return;
@@ -706,7 +718,7 @@ function createSignalMarker(signalId, signalData) {
 	});
 	const position = stackIndex === 0
 		? basePosition
-		: [basePosition[0] + stackIndex * SIGNAL_STACK_DEG, basePosition[1]];
+		: fanSignalPosition(basePosition, stackIndex);
 
 	const marker = L.marker(position, {
 		icon: getSignalIcon(aspect, mode, signalType, direction),
@@ -1330,11 +1342,18 @@ function updateCarMarker(carId) {
 	updateCarColor(carId);
 }
 
+// Highlighted locos are always drawn at least this much larger than life so they
+// visibly stand out, even at normal zoom where scaleMarkerFactor is 1.
+const LOCO_HIGHLIGHT_SCALE = 2.5;
+
 function getCarOverlayBounds(carId, carData) {
 	const position = carData.position;
-	// Selected/highlighted locos scale up so they're easy to spot, but cap at 3×
-	// so they don't balloon to absurd sizes when zoomed all the way out.
-	const factor = selectedLocos.has(carId) ? Math.min(scaleMarkerFactor, 3) : 1;
+	// Selected/highlighted locos scale up so they're easy to spot: at least
+	// LOCO_HIGHLIGHT_SCALE×, growing with zoom-out but capped at 3× so they don't
+	// balloon to absurd sizes when zoomed all the way out.
+	const factor = selectedLocos.has(carId)
+		? Math.max(LOCO_HIGHLIGHT_SCALE, Math.min(scaleMarkerFactor, 3))
+		: 1;
 	const length = metersToDegrees * carData.length * factor;
 	const width = metersToDegrees * carWidthMeters * factor;
 	return [[position[0] - width / 2, position[1] - length / 2], [position[0] + width / 2, position[1] + length / 2]];

@@ -51,6 +51,18 @@ function ctcEscapeAttr(v) {
 		.replace(/>/g, '&gt;');
 }
 
+// Fan the n-th co-located schematic signal onto a small ring (pixel space) so
+// even many signals sharing a junction never sit on top of each other.
+function fanSchematicSignal(x, y, n) {
+	if (n === 0) return [x, y];
+	const perRing = 6;
+	const k = n - 1;
+	const ring = 1 + Math.floor(k / perRing);
+	const angle = (k % perRing) * (Math.PI * 2 / perRing) + ring * 0.6;
+	const r = 11 * ring;
+	return [x + r * Math.cos(angle), y + r * Math.sin(angle)];
+}
+
 // Gather geometry from the already-loaded map layers.
 function ctcCollectGeometry() {
 	const tracks = []; // { id, coords: [[lat,lng],...], siding }
@@ -77,11 +89,16 @@ function ctcCollectGeometry() {
 		});
 	}
 
-	const sigs = []; // { id, lat, lng }
+	const sigs = []; // { id, lat, lng, direction }
 	if (typeof signalMarkers !== 'undefined') {
 		signalMarkers.forEach((entry, signalId) => {
 			if (!entry || !entry.position) return;
-			sigs.push({ id: signalId, lat: entry.position[0], lng: entry.position[1] });
+			sigs.push({
+				id: signalId,
+				lat: entry.position[0],
+				lng: entry.position[1],
+				direction: entry.direction ?? null,
+			});
 		});
 	}
 
@@ -127,12 +144,32 @@ async function buildSchematic() {
 	}
 	parts.push('</g>');
 
-	// Signal layer (start "unknown"; coloured by updateSignalIndicators()).
+	// Signal layer. Each signal is a group: a transparent hit-circle (big click
+	// target), an optional facing-direction tick, and the coloured dot. Co-located
+	// signals are fanned apart in pixel space so none hides under another.
+	// Colour is applied to the group class by updateSignalIndicators().
 	parts.push('<g id="ctc-signals">');
+	const sigBaseSeen = []; // projected base points, to detect co-location
 	for (const s of sigs) {
-		const [x, y] = ctcProjection(s.lat, s.lng);
-		parts.push(`<circle class="ctc-signal unknown" data-signal-id="${ctcEscapeAttr(s.id)}" `
-			+ `cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4"><title>${ctcEscapeAttr(s.id)}</title></circle>`);
+		const [bx, by] = ctcProjection(s.lat, s.lng);
+		const n = sigBaseSeen.filter(p => Math.hypot(p[0] - bx, p[1] - by) < 8).length;
+		sigBaseSeen.push([bx, by]);
+		const [x, y] = fanSchematicSignal(bx, by, n);
+		const esc = ctcEscapeAttr(s.id);
+		let tick = '';
+		if (s.direction != null) {
+			// North-up, Y-flipped screen vector: (sin θ, −cos θ).
+			const th = s.direction * Math.PI / 180;
+			const L = 9;
+			const x2 = (x + L * Math.sin(th)).toFixed(1);
+			const y2 = (y - L * Math.cos(th)).toFixed(1);
+			tick = `<line class="ctc-signal-tick" x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x2}" y2="${y2}"/>`;
+		}
+		parts.push(`<g class="ctc-signal unknown" data-signal-id="${esc}">`
+			+ `<circle class="ctc-signal-hit" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="11"/>`
+			+ tick
+			+ `<circle class="ctc-signal-dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5"/>`
+			+ `<title>${esc}</title></g>`);
 	}
 	parts.push('</g>');
 
