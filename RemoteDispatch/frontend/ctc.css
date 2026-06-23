@@ -60,6 +60,18 @@
 .ctc-track.reserved {
 	stroke: var(--rd-ok);
 }
+/* A proposed route (preview before it is set) */
+.ctc-track.ctc-route {
+	stroke: var(--rd-accent);
+	stroke-width: 5;
+}
+/* The picked origin junction while building a route */
+.ctc-junction.ctc-route-end .ctc-junction-node {
+	fill: var(--rd-accent);
+}
+#ctc-schematic.route-mode {
+	cursor: crosshair;
+}
 
 /* ---- Signal indicators ----
    Each signal is a <g class="ctc-signal {state}"> with a transparent hit-circle
@@ -374,6 +386,53 @@
 	color: var(--rd-accent);
 	font-size: 11px;
 	min-width: 60px;
+}
+#ctc-toolbar .ctc-toolbar-sep {
+	width: 1px;
+	align-self: stretch;
+	background: var(--rd-panel-border);
+	margin: 0 2px;
+}
+#ctc-toolbar #ctc-route-btn.active {
+	background: var(--rd-accent);
+	color: #1a1200;
+	border-color: var(--rd-accent);
+}
+
+/* Route preview confirmation bar (top-centre, below the xfer banner area) */
+#ctc-route-confirm {
+	position: absolute;
+	top: 52px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: var(--rd-panel);
+	border: 1px solid var(--rd-accent);
+	border-radius: var(--rd-radius);
+	padding: 8px 14px;
+	display: none;
+	gap: 10px;
+	align-items: center;
+	color: var(--rd-text);
+	font-size: 13px;
+	z-index: 100;
+}
+#ctc-route-confirm.visible {
+	display: flex;
+}
+#ctc-route-confirm button {
+	border: none;
+	border-radius: 4px;
+	padding: 4px 12px;
+	font-weight: 500;
+	cursor: pointer;
+}
+#ctc-route-confirm #ctc-route-set {
+	background: var(--rd-accent);
+	color: #1a1200;
+}
+#ctc-route-confirm #ctc-route-cancel {
+	background: var(--rd-input-bg);
+	color: var(--rd-text);
 }
 
 /* ---- Zone control strip (top-left of CTC) ---- */

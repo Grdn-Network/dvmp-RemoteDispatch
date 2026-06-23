@@ -309,8 +309,12 @@ function wireCtcInteractions(svg) {
 		const jg = e.target.closest('.ctc-junction');
 		if (jg) {
 			const idx = jg.getAttribute('data-junction-id');
-			if (idx != null && typeof toggleJunction === 'function')
+			if (idx == null) return;
+			if (ctcRouteMode) {
+				onRouteJunctionClick(Number(idx)); // pick origin/destination
+			} else if (typeof toggleJunction === 'function') {
 				toggleJunction(Number(idx));
+			}
 			closeCtcSignalPopup();
 			return;
 		}
@@ -430,6 +434,201 @@ function initCtcToolbar() {
 	if (all) all.addEventListener('click', () => ctcBulkSignals(ctcAllSignalIds(), 'Manual', 'S1'));
 	if (view) view.addEventListener('click', () => ctcBulkSignals(ctcSignalIdsInView(), 'Manual', 'S1'));
 	if (release) release.addEventListener('click', () => ctcBulkSignals(ctcAllSignalIds(), 'Automatic', null));
+
+	const routeBtn = document.getElementById('ctc-route-btn');
+	if (routeBtn) routeBtn.addEventListener('click', toggleRouteMode);
+	const setBtn = document.getElementById('ctc-route-set');
+	if (setBtn) setBtn.addEventListener('click', confirmRoute);
+	const cancelBtn = document.getElementById('ctc-route-cancel');
+	if (cancelBtn) cancelBtn.addEventListener('click', cancelRoute);
+}
+
+/////////////////////
+// Route-setting (NX-style): click junction A then B; the software pathfinds on a
+// track graph built from the geometry, previews the route, and on confirm throws
+// the switches along it and greens the signals on the path.
+//
+// NOTE: the graph is built by snapping coincident track endpoints (epsilon grid).
+// The epsilon and junction→node snapping should be validated against real DV
+// topology in-game. The mandatory preview+confirm means a wrong path is shown
+// before anything is thrown.
+
+let ctcGraph = null;        // { adj: Map<node,[{track,to}]>, nodePos: Map<node,[lat,lng]> }
+let ctcRouteMode = false;
+let ctcRouteA = null;       // first picked junction index
+let ctcRoutePath = null;    // { a, b, tracks:[...] }
+
+const CTC_NODE_Q = 1e-5;    // ~1.1 m endpoint-merge grid
+function ctcNodeKey(lat, lng) {
+	return Math.round(lat / CTC_NODE_Q) + ',' + Math.round(lng / CTC_NODE_Q);
+}
+
+function buildTrackGraph() {
+	const adj = new Map();
+	const nodePos = new Map();
+	const addNode = (lat, lng) => {
+		const k = ctcNodeKey(lat, lng);
+		if (!adj.has(k)) { adj.set(k, []); nodePos.set(k, [lat, lng]); }
+		return k;
+	};
+	if (typeof trackPolyLines !== 'undefined') {
+		trackPolyLines.forEach((poly, trackId) => {
+			const lls = poly.getLatLngs();
+			if (!lls || lls.length < 2) return;
+			const a = lls[0], b = lls[lls.length - 1];
+			const ka = addNode(a.lat, a.lng), kb = addNode(b.lat, b.lng);
+			if (ka === kb) return;
+			adj.get(ka).push({ track: trackId, to: kb });
+			adj.get(kb).push({ track: trackId, to: ka });
+		});
+	}
+	ctcGraph = { adj, nodePos };
+}
+
+// Graph node for a junction: its exact endpoint node, else the nearest node
+// (junction markers can sit slightly off the shared track endpoint).
+function ctcJunctionNode(index) {
+	const j = (typeof junctions !== 'undefined') && junctions[index];
+	if (!j || !j.marker) return null;
+	const c = j.marker.getBounds().getCenter();
+	const exact = ctcNodeKey(c.lat, c.lng);
+	if (ctcGraph.adj.has(exact)) return exact;
+	let best = null, bd = Infinity;
+	ctcGraph.nodePos.forEach((p, k) => {
+		const d = (p[0] - c.lat) ** 2 + (p[1] - c.lng) ** 2;
+		if (d < bd) { bd = d; best = k; }
+	});
+	return best;
+}
+
+// BFS over the track graph; returns the ordered list of trackIds, or null.
+function findRoute(aIndex, bIndex) {
+	if (!ctcGraph) buildTrackGraph();
+	const start = ctcJunctionNode(aIndex), goal = ctcJunctionNode(bIndex);
+	if (start == null || goal == null || !ctcGraph.adj.has(start) || !ctcGraph.adj.has(goal)) return null;
+	const prev = new Map();
+	const queue = [start];
+	const seen = new Set([start]);
+	while (queue.length) {
+		const n = queue.shift();
+		if (n === goal) break;
+		for (const e of ctcGraph.adj.get(n) || []) {
+			if (seen.has(e.to)) continue;
+			seen.add(e.to);
+			prev.set(e.to, { from: n, track: e.track });
+			queue.push(e.to);
+		}
+	}
+	if (!seen.has(goal)) return null;
+	const tracks = [];
+	let cur = goal;
+	while (cur !== start) {
+		const p = prev.get(cur);
+		if (!p) return null;
+		tracks.push(p.track);
+		cur = p.from;
+	}
+	return tracks.reverse();
+}
+
+function toggleRouteMode() {
+	ctcRouteMode = !ctcRouteMode;
+	ctcRouteA = null;
+	ctcRoutePath = null;
+	clearRouteHighlight();
+	hideRouteConfirm();
+	const btn = document.getElementById('ctc-route-btn');
+	if (btn) btn.classList.toggle('active', ctcRouteMode);
+	const svg = document.getElementById('ctc-schematic');
+	if (svg) svg.classList.toggle('route-mode', ctcRouteMode);
+	ctcToolbarStatus(ctcRouteMode ? 'pick origin junction' : '');
+}
+
+// Called from the junction click path when route mode is active.
+function onRouteJunctionClick(idx) {
+	if (ctcRouteA == null) {
+		ctcRouteA = idx;
+		markRouteEndpoint(idx);
+		ctcToolbarStatus('pick destination junction');
+		return;
+	}
+	if (idx === ctcRouteA) return;
+	const path = findRoute(ctcRouteA, idx);
+	if (!path || !path.length) { ctcToolbarStatus('no route found'); return; }
+	ctcRoutePath = { a: ctcRouteA, b: idx, tracks: path };
+	highlightRoute(path);
+	showRouteConfirm(path.length);
+}
+
+function clearRouteHighlight() {
+	const svg = document.getElementById('ctc-schematic');
+	if (!svg) return;
+	svg.querySelectorAll('.ctc-track.ctc-route').forEach(el => el.classList.remove('ctc-route'));
+	svg.querySelectorAll('.ctc-junction.ctc-route-end').forEach(el => el.classList.remove('ctc-route-end'));
+}
+
+function markRouteEndpoint(idx) {
+	const g = ctcJunctionEls.get(String(idx));
+	if (g) g.classList.add('ctc-route-end');
+}
+
+function highlightRoute(tracks) {
+	for (const t of tracks) {
+		const el = ctcTrackEls.get(t);
+		if (el) el.classList.add('ctc-route');
+	}
+}
+
+function showRouteConfirm(len) {
+	const bar = document.getElementById('ctc-route-confirm');
+	const txt = document.getElementById('ctc-route-confirm-text');
+	if (txt) txt.textContent = `Set route over ${len} track${len === 1 ? '' : 's'}?`;
+	if (bar) bar.classList.add('visible');
+}
+
+function hideRouteConfirm() {
+	const bar = document.getElementById('ctc-route-confirm');
+	if (bar) bar.classList.remove('visible');
+}
+
+function confirmRoute() {
+	if (ctcRoutePath) applyRoute(ctcRoutePath.tracks);
+	cancelRoute();
+}
+
+function cancelRoute() {
+	ctcRouteA = null;
+	ctcRoutePath = null;
+	clearRouteHighlight();
+	hideRouteConfirm();
+	if (ctcRouteMode) ctcToolbarStatus('pick origin junction');
+}
+
+// Throw the switches along the path and green its signals.
+function applyRoute(tracks) {
+	const pathSet = new Set(tracks);
+	let thrown = 0;
+	if (typeof junctions !== 'undefined') {
+		junctions.forEach((j, idx) => {
+			if (!j || !j.branches || j.selectedBranch == null) return;
+			const want = pathSet.has(j.branches[0]) ? 0
+				: (pathSet.has(j.branches[1]) ? 1 : -1);
+			if (want !== -1 && want !== j.selectedBranch && typeof toggleJunction === 'function') {
+				toggleJunction(idx);
+				thrown++;
+			}
+		});
+	}
+	const sigIds = [];
+	if (typeof signalMarkers !== 'undefined') {
+		signalMarkers.forEach((entry, id) => {
+			if (!entry || !entry.position) return;
+			const tk = findClosestTrack(entry.position);
+			if (tk && pathSet.has(tk)) sigIds.push(id);
+		});
+	}
+	if (sigIds.length) ctcBulkSignals(sigIds, 'Manual', 'S2');
+	ctcToolbarStatus(`route set: ${thrown} switch${thrown === 1 ? '' : 'es'}, ${sigIds.length} signals`);
 }
 
 /////////////////////
