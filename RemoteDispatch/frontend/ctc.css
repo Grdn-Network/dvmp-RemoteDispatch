@@ -52,6 +52,9 @@
 	fill: none;
 	stroke-linecap: round;
 	transition: stroke 0.2s;
+	/* Keep the line a constant on-screen width regardless of zoom; the path
+	   itself still scales with the viewBox (it's the geography). */
+	vector-effect: non-scaling-stroke;
 }
 .ctc-track.occupied {
 	stroke: var(--rd-danger);

@@ -36,6 +36,7 @@ async function initCTC() {
 	buildCtcElementMaps(svg);
 	wireCtcInteractions(svg);
 	wireCtcPanZoom(svg);
+	updateMarkerScales(svg);
 }
 
 /////////////////////
@@ -54,6 +55,23 @@ function resetCtcViewBox(svg) {
 	ctcViewBox.x = 0; ctcViewBox.y = 0;
 	ctcViewBox.w = CTC_VIEW_W; ctcViewBox.h = CTC_VIEW_H;
 	applyCtcViewBox(svg);
+	updateMarkerScales(svg);
+}
+
+// Markers (signals, junctions, train labels) live in .ctc-scaled groups whose
+// content is centred at the group origin. We counter-scale them by the inverse of
+// the zoom so they stay a constant size on screen instead of ballooning when the
+// viewBox shrinks. Only needs to run when the zoom (viewBox.w) changes, not on pan.
+let ctcMarkerScale = 1;
+function updateMarkerScales(svg) {
+	ctcMarkerScale = ctcViewBox.w / CTC_VIEW_W;
+	const s = ctcMarkerScale.toFixed(4);
+	svg.querySelectorAll('.ctc-scaled').forEach(el => {
+		const x = el.getAttribute('data-x');
+		const y = el.getAttribute('data-y');
+		if (x == null || y == null) return;
+		el.setAttribute('transform', `translate(${x} ${y}) scale(${s})`);
+	});
 }
 
 // Screen point -> current SVG/user coordinates, honouring preserveAspectRatio.
@@ -86,6 +104,7 @@ function wireCtcPanZoom(svg) {
 		ctcViewBox.w = newW;
 		ctcViewBox.h = newH;
 		applyCtcViewBox(svg);
+		updateMarkerScales(svg); // zoom changed → keep markers a constant screen size
 	}, { passive: false });
 
 	// Drag empty space = pan. A real drag (>4px) sets ctcWasDragging so the
@@ -214,22 +233,27 @@ function updateBlockOccupancy() {
 	});
 }
 
-// Map a signal aspect to a colour class. Aspect meanings are taken from the
-// existing signal popup: S2=Clear, S4=Expect Caution, S6=Caution, S1/S1c=Stop.
-// Distant (repeater) signals warn of the next signal and never show a hard stop.
+// Map a signal aspect to a colour class, per the GRDN OPS signal chart:
+//   S2/S3/S4/S5 = proceed (green), S6/S7 = caution (yellow), S1/S1c = stop (red).
+//   S0 = "controlled by dispatch" (white in-game) — in CTC we never show white;
+//        a controlled signal reads as held-at-stop (red).
+//   Distant (repeater) signals are advisory — always amber, never green/red/white,
+//        so they read distinctly from controllable main signals.
+//   Anything unreported/OFF defaults to red (safe).
 function ctcSignalColorClass(aspect, type) {
-	if (!aspect || aspect === 'OFF') return 'unknown';
-	const a = String(aspect).toUpperCase();
-	if (type === 'Distant') {
-		return (a === 'DS1' || a === 'DS2') ? 'yellow' : 'green';
-	}
+	if (type === 'Distant') return 'yellow';
+	const a = String(aspect || '').toUpperCase();
 	switch (a) {
+		case 'S2':
+		case 'S3':
+		case 'S4':
+		case 'S5': return 'green';
+		case 'S6':
+		case 'S7': return 'yellow';
 		case 'S1':
 		case 'S1C': return 'red';
-		case 'S6':
-		case 'S4': return 'yellow';
-		case 'S2': return 'green';
-		default: return 'unknown';
+		case 'S0': return 'red'; // controlled by dispatch — held, not white
+		default: return 'red';   // OFF / unknown → stop
 	}
 }
 
@@ -238,7 +262,8 @@ function updateSignalIndicators() {
 	signalMarkers.forEach((entry, signalId) => {
 		const el = ctcSignalEls.get(signalId);
 		if (!el) return;
-		el.setAttribute('class', 'ctc-signal ' + ctcSignalColorClass(entry.aspect, entry.type));
+		// Keep ctc-scaled so the zoom-compensating transform is preserved.
+		el.setAttribute('class', 'ctc-signal ctc-scaled ' + ctcSignalColorClass(entry.aspect, entry.type));
 	});
 }
 
@@ -267,16 +292,17 @@ function updateJunctionBlades() {
 		const tp = ctcProjection(target.lat, target.lng);
 		let dx = tp[0] - jp[0], dy = tp[1] - jp[1];
 		const len = Math.hypot(dx, dy) || 1;
-		dx = dx / len * 11; dy = dy / len * 11; // 11px blade
+		dx = dx / len * 11; dy = dy / len * 11; // local units; the group scale keeps it constant on screen
 		if (!line) {
 			line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
 			line.setAttribute('class', 'ctc-junction-blade');
 			g.appendChild(line);
 		}
-		line.setAttribute('x1', jp[0].toFixed(1));
-		line.setAttribute('y1', jp[1].toFixed(1));
-		line.setAttribute('x2', (jp[0] + dx).toFixed(1));
-		line.setAttribute('y2', (jp[1] + dy).toFixed(1));
+		// Drawn from the junction's group origin (the group is translate + scale).
+		line.setAttribute('x1', '0');
+		line.setAttribute('y1', '0');
+		line.setAttribute('x2', dx.toFixed(1));
+		line.setAttribute('y2', dy.toFixed(1));
 	});
 }
 
@@ -285,12 +311,16 @@ function updateJunctionBlades() {
 function updateTrainLabels() {
 	const layer = document.getElementById('ctc-trains');
 	if (!layer || !ctcProjection || typeof allCarData === 'undefined') return;
+	const s = ctcMarkerScale.toFixed(4);
 	const parts = [];
 	allCarData.forEach((car, carId) => {
 		if (carId.slice(0, 2) !== 'L-' || !car || !car.position) return;
 		const p = ctcProjection(car.position[0], car.position[1]);
-		parts.push(`<text class="ctc-train-label" data-train-id="${ctcEscapeAttr(carId)}" `
-			+ `x="${(p[0] + 6).toFixed(1)}" y="${(p[1] - 6).toFixed(1)}">`
+		// Constant on-screen size: the label is drawn at a small local offset and
+		// the group transform applies the zoom-compensating scale (like the markers).
+		parts.push(`<text class="ctc-train-label ctc-scaled" data-train-id="${ctcEscapeAttr(carId)}" `
+			+ `data-x="${p[0].toFixed(1)}" data-y="${p[1].toFixed(1)}" x="6" y="-6" `
+			+ `transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)}) scale(${s})">`
 			+ `${ctcEscapeAttr(carId.slice(2))}</text>`);
 	});
 	layer.innerHTML = parts.join('');

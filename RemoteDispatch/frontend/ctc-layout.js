@@ -156,19 +156,22 @@ async function buildSchematic() {
 		sigBaseSeen.push([bx, by]);
 		const [x, y] = fanSchematicSignal(bx, by, n);
 		const esc = ctcEscapeAttr(s.id);
+		// Drawables are centred at the group origin; the group's transform
+		// (translate + zoom-compensating scale, applied by updateMarkerScales)
+		// keeps the marker a constant size on screen at any zoom.
 		let tick = '';
 		if (s.direction != null) {
 			// North-up, Y-flipped screen vector: (sin θ, −cos θ).
 			const th = s.direction * Math.PI / 180;
 			const L = 9;
-			const x2 = (x + L * Math.sin(th)).toFixed(1);
-			const y2 = (y - L * Math.cos(th)).toFixed(1);
-			tick = `<line class="ctc-signal-tick" x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x2}" y2="${y2}"/>`;
+			tick = `<line class="ctc-signal-tick" x1="0" y1="0" `
+				+ `x2="${(L * Math.sin(th)).toFixed(1)}" y2="${(-L * Math.cos(th)).toFixed(1)}"/>`;
 		}
-		parts.push(`<g class="ctc-signal unknown" data-signal-id="${esc}">`
-			+ `<circle class="ctc-signal-hit" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="11"/>`
+		parts.push(`<g class="ctc-signal ctc-scaled unknown" data-signal-id="${esc}" `
+			+ `data-x="${x.toFixed(1)}" data-y="${y.toFixed(1)}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">`
+			+ `<circle class="ctc-signal-hit" cx="0" cy="0" r="11"/>`
 			+ tick
-			+ `<circle class="ctc-signal-dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5"/>`
+			+ `<circle class="ctc-signal-dot" cx="0" cy="0" r="5"/>`
 			+ `<title>${esc}</title></g>`);
 	}
 	parts.push('</g>');
@@ -177,8 +180,9 @@ async function buildSchematic() {
 	parts.push('<g id="ctc-junctions">');
 	for (const j of juncs) {
 		const [x, y] = ctcProjection(j.lat, j.lng);
-		parts.push(`<g class="ctc-junction" data-junction-id="${j.index}">`
-			+ `<circle class="ctc-junction-node" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5">`
+		parts.push(`<g class="ctc-junction ctc-scaled" data-junction-id="${j.index}" `
+			+ `data-x="${x.toFixed(1)}" data-y="${y.toFixed(1)}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">`
+			+ `<circle class="ctc-junction-node" cx="0" cy="0" r="3.5">`
 			+ `<title>${ctcEscapeAttr(j.name)}</title></circle></g>`);
 	}
 	parts.push('</g>');
