@@ -193,11 +193,10 @@ namespace DvMod.RemoteDispatch
 		// /updates). Reuses the same per-session update machinery via WebSocketPump.
 		private static async Task HandleWebSocketRequest(HttpListenerContext context)
 		{
-			// NOTE: do NOT gate on context.Request.IsWebSocketRequest — Mono's
-			// implementation returns false even when the Upgrade/Connection headers are
-			// valid (confirmed in-game: Upgrade='websocket', Connection='Upgrade', yet
-			// IsWebSocketRequest==false). Check the headers ourselves and go straight to
-			// AcceptWebSocketAsync; if that's also unimplemented it throws below and we log it.
+			// Do NOT gate on context.Request.IsWebSocketRequest — Mono returns false even
+			// for a valid upgrade (confirmed in-game). Validate the header ourselves, then
+			// do the handshake + framing on the raw stream (RawWebSocket), since Mono's
+			// HttpListener AcceptWebSocketAsync is unreliable.
 			var upgradeHeader = context.Request.Headers["Upgrade"];
 			if (string.IsNullOrEmpty(upgradeHeader)
 				|| upgradeHeader.IndexOf("websocket", StringComparison.OrdinalIgnoreCase) < 0)
@@ -208,22 +207,18 @@ namespace DvMod.RemoteDispatch
 				return;
 			}
 
-			HttpListenerWebSocketContext wsContext;
+			var username = context.User?.Identity?.Name ?? "";
 			try
 			{
-				// Mono's ManagedWebSocket honours keepAliveInterval (ping frames), which keeps
-				// the connection alive through the Cloudflare tunnel.
-				wsContext = await context.AcceptWebSocketAsync(subProtocol: null, receiveBufferSize: 4096, keepAliveInterval: TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+				var ok = await RawWebSocket.Run(context, username).ConfigureAwait(false);
+				if (!ok)
+					try { RenderEmpty(context, 500); } catch { }
 			}
 			catch (Exception e)
 			{
-				Main.Log($"WebSocket upgrade failed: {e.Message}");
+				Main.Log($"/ws: raw websocket failed: {e.Message}");
 				try { RenderEmpty(context, 500); } catch { }
-				return;
 			}
-
-			var username = context.User?.Identity?.Name ?? "";
-			await WebSocketPump.Run(wsContext.WebSocket, username).ConfigureAwait(false);
 		}
 
 		private static async void HandleCarRequest(HttpListenerContext context)
