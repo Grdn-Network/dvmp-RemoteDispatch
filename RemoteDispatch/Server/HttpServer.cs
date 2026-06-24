@@ -193,12 +193,17 @@ namespace DvMod.RemoteDispatch
 		// /updates). Reuses the same per-session update machinery via WebSocketPump.
 		private static async Task HandleWebSocketRequest(HttpListenerContext context)
 		{
-			if (!context.Request.IsWebSocketRequest)
+			// NOTE: do NOT gate on context.Request.IsWebSocketRequest — Mono's
+			// implementation returns false even when the Upgrade/Connection headers are
+			// valid (confirmed in-game: Upgrade='websocket', Connection='Upgrade', yet
+			// IsWebSocketRequest==false). Check the headers ourselves and go straight to
+			// AcceptWebSocketAsync; if that's also unimplemented it throws below and we log it.
+			var upgradeHeader = context.Request.Headers["Upgrade"];
+			if (string.IsNullOrEmpty(upgradeHeader)
+				|| upgradeHeader.IndexOf("websocket", StringComparison.OrdinalIgnoreCase) < 0)
 			{
-				// The request reached us but lacks the Upgrade/Connection headers — usually
-				// a proxy (e.g. Cloudflare) stripped them or didn't forward the upgrade.
-				Main.Log($"/ws: not a websocket upgrade (Upgrade='{context.Request.Headers["Upgrade"]}', "
-					+ $"Connection='{context.Request.Headers["Connection"]}') — proxy not forwarding the upgrade?");
+				Main.Log($"/ws: not a websocket upgrade (Upgrade='{upgradeHeader}', "
+					+ $"Connection='{context.Request.Headers["Connection"]}')");
 				RenderEmpty(context, 400);
 				return;
 			}
