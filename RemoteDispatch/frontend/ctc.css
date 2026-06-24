@@ -108,7 +108,7 @@
 	cursor: pointer;
 }
 .ctc-junction-node {
-	fill: var(--rd-text-muted);
+	fill: #e2e8f0;
 	stroke: #000;
 	stroke-width: 0.5;
 	transition: fill 0.15s;
@@ -116,12 +116,43 @@
 .ctc-junction:hover .ctc-junction-node {
 	fill: var(--rd-accent);
 }
+/* The leg the switch is lined for — bright and bold. */
 .ctc-junction-blade {
 	stroke: var(--rd-accent);
-	stroke-width: 2.5;
+	stroke-width: 3.5;
 	stroke-linecap: round;
 	pointer-events: none;
 }
+/* The other leg — dim, so the switch reads as a switch. */
+.ctc-junction-stub {
+	stroke: #5f6b7a;
+	stroke-width: 2;
+	stroke-linecap: round;
+	pointer-events: none;
+}
+.ctc-junction-label {
+	fill: var(--rd-text-muted);
+	font-family: monospace;
+	font-size: 9px;
+	paint-order: stroke;
+	stroke: var(--rd-bg);
+	stroke-width: 2.5px;
+	pointer-events: none;
+}
+/* Second line of a train label: the job + destination it's working. */
+.ctc-train-job {
+	fill: var(--rd-text-muted);
+	font-size: 9px;
+	font-weight: 400;
+}
+
+/* ---- Layer visibility (toggled from the Layers panel) ---- */
+#ctc-schematic.hide-signals #ctc-signals { display: none; }
+#ctc-schematic.hide-junctions #ctc-junctions { display: none; }
+#ctc-schematic.hide-junction-labels #ctc-junction-labels { display: none; }
+#ctc-schematic.hide-trains #ctc-trains { display: none; }
+#ctc-schematic.hide-jobs .ctc-train-job { display: none; }
+#ctc-schematic.hide-occupancy .ctc-track.occupied { stroke: #2a3a4a; stroke-width: 3; }
 
 /* Siding tracks read dimmer than mainline so the running lines stand out */
 .ctc-track-siding {
@@ -436,6 +467,44 @@
 #ctc-route-confirm #ctc-route-cancel {
 	background: var(--rd-input-bg);
 	color: var(--rd-text);
+}
+
+/* ---- Layers panel (pops up above the toolbar) ---- */
+#ctc-layers {
+	position: absolute;
+	bottom: 56px;
+	left: 52px;
+	background: var(--rd-panel);
+	border: 1px solid var(--rd-panel-border);
+	border-radius: var(--rd-radius);
+	padding: 8px 10px;
+	z-index: 60;
+	display: none;
+	flex-direction: column;
+	gap: 5px;
+	min-width: 140px;
+}
+#ctc-layers.open {
+	display: flex;
+}
+#ctc-layers .ctc-layers-title {
+	color: var(--rd-text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	font-size: 11px;
+	margin-bottom: 2px;
+}
+#ctc-layers label {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	font-size: 12px;
+	color: var(--rd-text);
+	cursor: pointer;
+}
+#ctc-layers input[type="checkbox"] {
+	accent-color: var(--rd-accent);
+	cursor: pointer;
 }
 
 /* ---- Zone control strip (top-left of CTC) ---- */

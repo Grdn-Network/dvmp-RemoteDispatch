@@ -180,13 +180,23 @@ async function buildSchematic() {
 	parts.push('</g>');
 
 	// Junction layer (data-junction-id is the array index used by toggleJunction).
+	// updateJunctionBlades() adds the branch stubs (selected = bright, other = dim).
 	parts.push('<g id="ctc-junctions">');
 	for (const j of juncs) {
 		const [x, y] = ctcProjection(j.lat, j.lng);
 		parts.push(`<g class="ctc-junction ctc-scaled" data-junction-id="${j.index}" `
 			+ `data-x="${x.toFixed(1)}" data-y="${y.toFixed(1)}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">`
-			+ `<circle class="ctc-junction-node" cx="0" cy="0" r="3.5">`
+			+ `<circle class="ctc-junction-node" cx="0" cy="0" r="4">`
 			+ `<title>${ctcEscapeAttr(j.name)}</title></circle></g>`);
+	}
+	parts.push('</g>');
+
+	// Junction name labels — own layer so they can be toggled.
+	parts.push('<g id="ctc-junction-labels">');
+	for (const j of juncs) {
+		const [x, y] = ctcProjection(j.lat, j.lng);
+		parts.push(`<text class="ctc-junction-label ctc-scaled" data-x="${x.toFixed(1)}" data-y="${y.toFixed(1)}" `
+			+ `x="7" y="-7" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">${ctcEscapeAttr(j.name)}</text>`);
 	}
 	parts.push('</g>');
 

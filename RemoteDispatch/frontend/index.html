@@ -207,7 +207,20 @@
 			<span class="ctc-toolbar-sep"></span>
 			<button id="ctc-route-btn" title="Set a route: click junction A then B">Route</button>
 			<button id="ctc-route-clear" title="Release all active routes (signals back to red)">Clear</button>
+			<span class="ctc-toolbar-sep"></span>
+			<button id="ctc-layers-btn" title="Show/hide map layers">Layers</button>
 			<span id="ctc-toolbar-status"></span>
+		</div>
+
+		<!-- Layer visibility toggles (declutter / future info levels) -->
+		<div id="ctc-layers">
+			<div class="ctc-layers-title">Layers</div>
+			<label><input type="checkbox" data-layer="signals" checked> Signals</label>
+			<label><input type="checkbox" data-layer="junctions" checked> Switches</label>
+			<label><input type="checkbox" data-layer="junction-labels"> Switch labels</label>
+			<label><input type="checkbox" data-layer="trains" checked> Trains</label>
+			<label><input type="checkbox" data-layer="occupancy" checked> Occupancy</label>
+			<label><input type="checkbox" data-layer="jobs" checked> Job info</label>
 		</div>
 
 		<!-- Route preview confirmation -->

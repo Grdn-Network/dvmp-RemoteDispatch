@@ -272,37 +272,51 @@ function ctcDist2(a, b) {
 	return dlat * dlat + dlng * dlng;
 }
 
-// Draw a short blade on each junction pointing toward its selected branch.
+// Unit direction (projected/screen space) from a junction toward one of its
+// branch tracks, or null if that track is unknown.
+function ctcBranchDir(jc, trackId) {
+	const poly = (typeof trackPolyLines !== 'undefined') && trackPolyLines.get(trackId);
+	if (!poly) return null;
+	const lls = poly.getLatLngs();
+	if (!lls || lls.length < 2) return null;
+	// Step one vertex in from whichever end of the track meets the junction.
+	const firstNear = ctcDist2(lls[0], jc) <= ctcDist2(lls[lls.length - 1], jc);
+	const target = firstNear ? lls[1] : lls[lls.length - 2];
+	const jp = ctcProjection(jc.lat, jc.lng);
+	const tp = ctcProjection(target.lat, target.lng);
+	const dx = tp[0] - jp[0], dy = tp[1] - jp[1];
+	const len = Math.hypot(dx, dy) || 1;
+	return [dx / len, dy / len];
+}
+
+function setJunctionStub(g, selector, dir, len) {
+	let line = g.querySelector(selector);
+	if (!dir) { if (line) line.remove(); return; }
+	if (!line) {
+		line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+		line.setAttribute('class', selector.slice(1)); // class without the leading dot
+		g.insertBefore(line, g.firstChild); // behind the node circle
+	}
+	// Drawn from the junction's group origin (local units; the group scale keeps it
+	// a constant size on screen).
+	line.setAttribute('x1', '0');
+	line.setAttribute('y1', '0');
+	line.setAttribute('x2', (dir[0] * len).toFixed(1));
+	line.setAttribute('y2', (dir[1] * len).toFixed(1));
+}
+
+// Render each junction as a readable switch: a bright stub toward the SET branch
+// and a dim stub toward the other, so the direction it's lined for is obvious.
 function updateJunctionBlades() {
 	if (typeof junctions === 'undefined' || !ctcProjection) return;
 	junctions.forEach((j, index) => {
 		const g = ctcJunctionEls.get(String(index));
 		if (!g || j == null || j.selectedBranch == null || !j.branches) return;
-		const selectedTrackId = j.branches[j.selectedBranch];
-		const poly = (typeof trackPolyLines !== 'undefined') && trackPolyLines.get(selectedTrackId);
-		let line = g.querySelector('.ctc-junction-blade');
 		const jc = j.marker.getBounds().getCenter();
-		const jp = ctcProjection(jc.lat, jc.lng);
-		if (!poly) { if (line) line.remove(); return; }
-		const lls = poly.getLatLngs();
-		if (lls.length < 2) { if (line) line.remove(); return; }
-		// Step one vertex in from whichever end of the track meets the junction.
-		const firstNear = ctcDist2(lls[0], jc) <= ctcDist2(lls[lls.length - 1], jc);
-		const target = firstNear ? lls[1] : lls[lls.length - 2];
-		const tp = ctcProjection(target.lat, target.lng);
-		let dx = tp[0] - jp[0], dy = tp[1] - jp[1];
-		const len = Math.hypot(dx, dy) || 1;
-		dx = dx / len * 11; dy = dy / len * 11; // local units; the group scale keeps it constant on screen
-		if (!line) {
-			line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-			line.setAttribute('class', 'ctc-junction-blade');
-			g.appendChild(line);
-		}
-		// Drawn from the junction's group origin (the group is translate + scale).
-		line.setAttribute('x1', '0');
-		line.setAttribute('y1', '0');
-		line.setAttribute('x2', dx.toFixed(1));
-		line.setAttribute('y2', dy.toFixed(1));
+		const selDir = ctcBranchDir(jc, j.branches[j.selectedBranch]);
+		const otherDir = ctcBranchDir(jc, j.branches[1 - j.selectedBranch]);
+		setJunctionStub(g, '.ctc-junction-stub', otherDir, 11); // the unset leg, dim
+		setJunctionStub(g, '.ctc-junction-blade', selDir, 16);  // the set leg, bright
 	});
 }
 
@@ -316,12 +330,20 @@ function updateTrainLabels() {
 	allCarData.forEach((car, carId) => {
 		if (carId.slice(0, 2) !== 'L-' || !car || !car.position) return;
 		const p = ctcProjection(car.position[0], car.position[1]);
-		// Constant on-screen size: the label is drawn at a small local offset and
-		// the group transform applies the zoom-compensating scale (like the markers).
+		const num = ctcEscapeAttr(carId.slice(2));
+		// Second line: the job and destination this loco is working (toggleable via
+		// the Jobs layer). Hidden when neither is present.
+		const job = car.jobId ? ctcEscapeAttr(car.jobId) : '';
+		const dest = car.destinationYardId ? ctcEscapeAttr(car.destinationYardId) : '';
+		const jobLine = (job || dest)
+			? `<tspan class="ctc-train-job" x="6" dy="11">${job}${dest ? ' →' + dest : ''}</tspan>`
+			: '';
+		// Constant on-screen size: drawn at a small local offset; the group transform
+		// applies the zoom-compensating scale (like the markers).
 		parts.push(`<text class="ctc-train-label ctc-scaled" data-train-id="${ctcEscapeAttr(carId)}" `
 			+ `data-x="${p[0].toFixed(1)}" data-y="${p[1].toFixed(1)}" x="6" y="-6" `
 			+ `transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)}) scale(${s})">`
-			+ `${ctcEscapeAttr(carId.slice(2))}</text>`);
+			+ `<tspan x="6">${num}</tspan>${jobLine}</text>`);
 	});
 	layer.innerHTML = parts.join('');
 }
@@ -473,6 +495,33 @@ function initCtcToolbar() {
 	if (setBtn) setBtn.addEventListener('click', confirmRoute);
 	const cancelBtn = document.getElementById('ctc-route-cancel');
 	if (cancelBtn) cancelBtn.addEventListener('click', cancelRoute);
+}
+
+/////////////////////
+// Layers — toggle each overlay's visibility (persisted). The framework for
+// future info-restriction levels: a hide-<layer> class on #ctc-schematic drives
+// CSS that shows/hides each layer group.
+
+function applyCtcLayer(layer, visible) {
+	const svg = document.getElementById('ctc-schematic');
+	if (svg) svg.classList.toggle('hide-' + layer, !visible);
+}
+
+function initCtcLayers() {
+	const btn = document.getElementById('ctc-layers-btn');
+	const panel = document.getElementById('ctc-layers');
+	if (btn && panel) btn.addEventListener('click', () => panel.classList.toggle('open'));
+	if (!panel) return;
+	panel.querySelectorAll('input[data-layer]').forEach(cb => {
+		const layer = cb.getAttribute('data-layer');
+		const saved = localStorage.getItem('ctc-layer-' + layer);
+		if (saved !== null) cb.checked = saved === '1';
+		applyCtcLayer(layer, cb.checked);
+		cb.addEventListener('change', () => {
+			applyCtcLayer(layer, cb.checked);
+			try { localStorage.setItem('ctc-layer-' + layer, cb.checked ? '1' : '0'); } catch (e) { /* ignore */ }
+		});
+	});
 }
 
 /////////////////////
@@ -935,6 +984,7 @@ function initCollab() {
 	});
 
 	initCtcToolbar();
+	initCtcLayers();
 	fetchWhoami();
 }
 
