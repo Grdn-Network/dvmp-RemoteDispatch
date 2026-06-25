@@ -376,6 +376,7 @@ function updateAllJobs(jobs) {
 	Object.entries(jobs).forEach(([jobId, jobData]) => allJobData.set(jobId, jobData));
 	updateJobList();
 	updateCarJobs();
+	if (ctcView === 'logi' && typeof updateLogi === 'function') updateLogi();
 }
 
 let jobSearchTimeoutId;
@@ -1407,6 +1408,7 @@ function updateAllCars(updateCarData) {
 			selectedLocos.delete(id);
 	updatePlayerLocoAssignments();
 	if (ctcMode) updateCTC();
+	if (ctcView === 'logi' && typeof updateLogi === 'function') updateLogi();
 }
 
 function updateCars(cars) {
@@ -1863,28 +1865,39 @@ function buildSignalsSidebar(installed) {
 let signalsInstalled = false;
 
 /////////////////////
-// CTC schematic mode toggle
+// View switch: Map / CTC / Logistics
 
-// Swaps between the Leaflet map and the schematic dispatch panel. The schematic
-// is lazily built on first activation (initCTC), then refreshed each time it is
-// shown so it reflects the latest data without waiting for the next push.
-const modeToggleBtn = document.getElementById('modeToggle');
-if (modeToggleBtn) {
-	modeToggleBtn.addEventListener('click', async () => {
-		ctcMode = !ctcMode;
-		document.getElementById('map').style.display = ctcMode ? 'none' : '';
-		document.getElementById('search').style.display = ctcMode ? 'none' : '';
-		// Keep the RD sidebar (train board, jobs, loco list, loco control, settings,
-		// signals filter) available in CTC mode too — it overlays the schematic's left
-		// edge, where the zone bar / toolbar are shifted clear of it.
-		document.getElementById('ctc-panel').classList.toggle('active', ctcMode);
-		modeToggleBtn.textContent = ctcMode ? 'Map' : 'CTC';
-		if (ctcMode) {
-			await initCTC();
-			updateCTC();
-		}
-	});
+// ctcView is the active view; ctcMode stays as a derived boolean so the existing
+// "if (ctcMode) updateCTC()" data hooks keep working. logiView drives the
+// logistics screen the same way.
+let ctcView = 'map';
+
+async function setView(view) {
+	ctcView = view;
+	ctcMode = view === 'ctc';
+	const mapOnly = view === 'map';
+	document.getElementById('map').style.display = mapOnly ? '' : 'none';
+	document.getElementById('search').style.display = mapOnly ? '' : 'none';
+	// The RD sidebar stays available in CTC (its tabs are useful there); the
+	// Logistics screen is self-contained, so hide it there.
+	const sidebar = document.getElementById('sidebar');
+	if (sidebar) sidebar.style.display = view === 'logi' ? 'none' : '';
+	document.getElementById('ctc-panel').classList.toggle('active', view === 'ctc');
+	const logiPanel = document.getElementById('logi-panel');
+	if (logiPanel) logiPanel.classList.toggle('active', view === 'logi');
+	document.querySelectorAll('#viewSwitch button').forEach(b =>
+		b.classList.toggle('active', b.getAttribute('data-view') === view));
+	if (view === 'ctc') {
+		await initCTC();
+		updateCTC();
+	} else if (view === 'logi' && typeof initLogi === 'function') {
+		initLogi();
+		updateLogi();
+	}
 }
+
+document.querySelectorAll('#viewSwitch button').forEach(b =>
+	b.addEventListener('click', () => setView(b.getAttribute('data-view'))));
 
 const signalsReady = junctionsReady
 	.then(_ => fetch(new URL('/signals', location)))

@@ -1,0 +1,185 @@
+/* ============================================================
+   logi.css — Logistics Officer screen + the Map/CTC/Logi switch.
+   Operations Dark theme (consumes the --rd-* tokens from style.css).
+   ============================================================ */
+
+/* ---- View switch (top-right) ---- */
+#viewSwitch {
+	position: absolute;
+	top: 10px;
+	right: 218px;
+	z-index: 1001;
+	display: flex;
+	background: var(--rd-panel);
+	border: 1px solid var(--rd-panel-border);
+	border-radius: var(--rd-radius);
+	overflow: hidden;
+}
+#viewSwitch button {
+	background: transparent;
+	color: var(--rd-text-muted);
+	border: none;
+	padding: 6px 14px;
+	font: bold 12px "Lucida Console", "Monaco", monospace;
+	letter-spacing: 0.05em;
+	cursor: pointer;
+}
+#viewSwitch button + button {
+	border-left: 1px solid var(--rd-panel-border);
+}
+#viewSwitch button:hover {
+	color: var(--rd-text);
+}
+#viewSwitch button.active {
+	background: var(--rd-accent);
+	color: #1a1200;
+}
+
+/* ---- Logistics panel ---- */
+#logi-panel {
+	position: absolute;
+	inset: 0;
+	background: var(--rd-bg);
+	color: var(--rd-text);
+	display: none;
+	flex-direction: column;
+	font-family: var(--font-sans, sans-serif);
+	overflow: hidden;
+}
+#logi-panel.active {
+	display: flex;
+}
+
+#logi-header {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--rd-panel-border);
+}
+#logi-header .logi-title {
+	font-size: 15px;
+	font-weight: 500;
+}
+#logi-filter {
+	background: var(--rd-input-bg);
+	color: var(--rd-text);
+	border: 1px solid var(--rd-panel-border);
+	border-radius: 4px;
+	padding: 5px 10px;
+	font-size: 12px;
+	width: 200px;
+}
+#logi-kpis {
+	margin-left: auto;
+	display: flex;
+	gap: 16px;
+	font-size: 11px;
+	color: var(--rd-text-muted);
+}
+#logi-kpis b { font-weight: 500; color: var(--rd-text); }
+#logi-kpis .logi-k-green { color: var(--rd-ok); }
+#logi-kpis .logi-k-amber { color: var(--rd-accent); }
+
+#logi-body {
+	flex: 1;
+	display: grid;
+	grid-template-columns: 1fr 280px;
+	gap: 1px;
+	background: var(--rd-panel-border);
+	min-height: 0;
+}
+
+/* ---- Job board ---- */
+#logi-board-wrap {
+	background: var(--rd-bg);
+	overflow-y: auto;
+	min-height: 0;
+}
+#logi-board {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12px;
+}
+#logi-board thead th {
+	position: sticky;
+	top: 0;
+	background: var(--rd-bg);
+	color: var(--rd-text-muted);
+	font-weight: 400;
+	text-align: left;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--rd-panel-border);
+	cursor: pointer;
+	white-space: nowrap;
+}
+#logi-board thead th.logi-num { text-align: right; }
+#logi-board thead th.sorted { color: var(--rd-accent); }
+#logi-board thead th.sorted[data-dir="down"]::after { content: " \25BC"; font-size: 8px; }
+#logi-board thead th.sorted[data-dir="up"]::after { content: " \25B2"; font-size: 8px; }
+#logi-board tbody td {
+	padding: 7px 12px;
+	border-top: 1px solid var(--rd-panel);
+	white-space: nowrap;
+}
+#logi-board tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+#logi-board tbody tr.logi-active { background: rgba(34, 197, 94, 0.05); }
+.logi-mono { font-family: monospace; }
+.logi-route { color: #cbd5e1; }
+.logi-num { text-align: right; }
+.logi-pay { color: var(--rd-ok); }
+.logi-lic { color: var(--rd-text-muted); font-family: monospace; font-size: 11px; }
+.logi-status {
+	font-size: 10px;
+	padding: 2px 7px;
+	border-radius: 5px;
+}
+.logi-status.avail { background: #12233a; color: #85b7eb; }
+.logi-status.active { background: #12281a; color: #7ee0a3; }
+
+/* ---- Side: trains + yards ---- */
+#logi-side {
+	background: var(--rd-bg);
+	overflow-y: auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+.logi-section-title {
+	padding: 10px 14px 6px;
+	font-size: 12px;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--rd-text-muted);
+}
+#logi-trains {
+	padding: 0 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.logi-train {
+	background: var(--rd-panel);
+	border: 1px solid var(--rd-panel-border);
+	border-radius: var(--rd-radius);
+	padding: 8px 10px;
+}
+.logi-train-top {
+	display: flex;
+	justify-content: space-between;
+	font-size: 12px;
+}
+.logi-speed { color: var(--rd-text-muted); font-size: 11px; }
+.logi-speed.moving { color: var(--rd-ok); }
+.logi-train-sub { font-size: 11px; color: var(--rd-text-muted); margin-top: 2px; }
+#logi-yards {
+	padding: 0 14px 14px;
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 4px 12px;
+	font-size: 11px;
+	color: #cbd5e1;
+}
+.logi-yard b { color: var(--rd-text); font-weight: 500; }
+.logi-empty { padding: 6px 14px; font-size: 12px; color: var(--rd-text-muted); }
