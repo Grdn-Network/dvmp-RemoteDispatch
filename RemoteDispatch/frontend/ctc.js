@@ -224,12 +224,47 @@ function computeOccupiedTracks() {
 /////////////////////
 // Live overlays
 
+// Colour each occupied track by the job/destination of the car on it — reusing
+// the map's getCarColor() so it matches the original RD colouring and the
+// Settings "car color" mode. Falls back to plain red. Respects the Occupancy layer.
+function ctcCarColor(carId) {
+	try {
+		if (typeof getCarColor === 'function') {
+			const c = getCarColor(carId);
+			if (c) return c;
+		}
+	} catch (e) { /* ignore */ }
+	return 'var(--rd-danger)';
+}
+
+function computeOccupiedColors() {
+	const m = new Map(); // trackId -> colour
+	if (typeof allCarData === 'undefined') return m;
+	allCarData.forEach((car, carId) => {
+		if (!car || !car.position) return;
+		const trackId = findClosestTrack(car.position);
+		if (trackId && !m.has(trackId)) m.set(trackId, ctcCarColor(carId));
+	});
+	return m;
+}
+
 function updateBlockOccupancy() {
-	const occupied = computeOccupiedTracks();
+	const svg = document.getElementById('ctc-schematic');
+	// Occupancy layer hidden → clear all occupancy styling and stop.
+	if (svg && svg.classList.contains('hide-occupancy')) {
+		ctcTrackEls.forEach(el => { el.classList.remove('occupied'); el.style.stroke = ''; });
+		return;
+	}
+	const colors = computeOccupiedColors();
 	ctcTrackEls.forEach((el, trackId) => {
-		const isOcc = occupied.has(trackId);
-		if (isOcc) el.classList.add('occupied');
-		else if (el.classList.contains('occupied')) el.classList.remove('occupied');
+		const color = colors.get(trackId);
+		if (color) {
+			el.classList.add('occupied');
+			el.style.stroke = color; // inline overrides the .occupied red; matches RD job colours
+		} else {
+			if (el.classList.contains('occupied')) el.classList.remove('occupied');
+			if (el.style.stroke) el.style.stroke = '';
+		}
 	});
 }
 
@@ -520,6 +555,7 @@ function initCtcLayers() {
 		cb.addEventListener('change', () => {
 			applyCtcLayer(layer, cb.checked);
 			try { localStorage.setItem('ctc-layer-' + layer, cb.checked ? '1' : '0'); } catch (e) { /* ignore */ }
+			updateCTC(); // re-apply overlays (e.g. re-colour occupancy when shown again)
 		});
 	});
 }
