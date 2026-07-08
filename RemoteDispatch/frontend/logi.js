@@ -12,6 +12,27 @@
 let logiInitialised = false;
 let logiSort = { key: 'pay', dir: -1 }; // default: highest paying first
 let logiFilter = '';
+let logiJobBoard = {}; // jobId -> { assignee, status, note } (shared coordination state)
+
+function logiMe() { return (typeof myUsername !== 'undefined' && myUsername) ? myUsername : ''; }
+
+// Live coordination updates from the server (tag "jobboard").
+function handleJobBoard(data) {
+	if (!data || !data.jobs) return;
+	logiJobBoard = data.jobs;
+	if (typeof ctcView !== 'undefined' && ctcView === 'logi') updateLogi();
+}
+
+function logiPostJob(jobId, action) {
+	fetch(new URL(`/job/${encodeURIComponent(jobId)}/${action}`, location), { method: 'POST' })
+		.catch(err => console.error('job ' + action + ' failed:', err));
+}
+function logiPostJobBody(jobId, action, body, json) {
+	const opts = { method: 'POST', body };
+	if (json) opts.headers = { 'Content-Type': 'application/json' };
+	fetch(new URL(`/job/${encodeURIComponent(jobId)}/${action}`, location), opts)
+		.catch(err => console.error('job ' + action + ' failed:', err));
+}
 
 const LOGI_JOB_TYPES = {
 	FH: 'Freight', LH: 'Logistics', SL: 'Shunt load', SU: 'Shunt unload',
@@ -38,6 +59,9 @@ const logiMoney = new Intl.NumberFormat('en-US', { style: 'currency', currency: 
 // One row of board data, normalised for sorting/rendering.
 function logiRow(jobId, jobData) {
 	const { origin, typeCode } = logiJobParts(jobId);
+	const board = logiJobBoard[jobId] || {};
+	const assignee = board.assignee || '';
+	const coordStatus = board.status || '';
 	return {
 		id: jobId,
 		type: LOGI_JOB_TYPES[typeCode] || typeCode || '—',
@@ -47,9 +71,33 @@ function logiRow(jobId, jobData) {
 		mass: jobData.mass || 0,
 		pay: jobData.basePayment || 0,
 		lic: (jobData.requiredLicenses || []).join(' '),
-		status: jobData.isActive ? 'Active' : 'Available',
+		assignee,
+		coordStatus,
+		note: board.note || '',
+		// for sorting: claimed jobs sort by their coordination status, else active/available
+		status: assignee ? (coordStatus || 'claimed') : (jobData.isActive ? 'Active' : 'Available'),
 		active: !!jobData.isActive,
 	};
+}
+
+// Status cell = the coordination control: Claim when free; a status selector +
+// release when it's yours; owner · status otherwise.
+function logiStatusCell(r) {
+	const id = logiEsc(r.id);
+	if (!r.assignee) return `<button class="logi-claim" data-job="${id}">Claim</button>`;
+	if (r.assignee === logiMe()) {
+		const opts = ['claimed', 'in-progress', 'done']
+			.map(s => `<option value="${s}" ${s === r.coordStatus ? 'selected' : ''}>${s}</option>`).join('');
+		return `<select class="logi-status-sel" data-job="${id}">${opts}</select>`
+			+ `<button class="logi-release" data-job="${id}" title="Release">&times;</button>`;
+	}
+	return `<span class="logi-owned" title="claimed by ${logiEsc(r.assignee)}">${logiEsc(r.assignee)} &middot; ${logiEsc(r.coordStatus)}</span>`;
+}
+
+function logiNoteCell(r) {
+	const mine = r.assignee && r.assignee === logiMe();
+	const txt = r.note ? logiEsc(r.note) : (mine ? '<span class="logi-note-add">add…</span>' : '');
+	return `<span class="logi-note${mine ? ' editable' : ''}" data-job="${logiEsc(r.id)}">${txt}</span>`;
 }
 
 function logiMatches(row) {
@@ -80,7 +128,8 @@ function logiRenderBoard() {
 		+ `<td class="logi-num">${Math.round(r.mass)}t</td>`
 		+ `<td class="logi-num logi-pay">${logiMoney.format(r.pay)}</td>`
 		+ `<td class="logi-lic">${logiEsc(r.lic)}</td>`
-		+ `<td><span class="logi-status ${r.active ? 'active' : 'avail'}">${logiEsc(r.status)}</span></td>`
+		+ `<td class="logi-status-cell">${logiStatusCell(r)}</td>`
+		+ `<td class="logi-note-cell">${logiNoteCell(r)}</td>`
 		+ `</tr>`).join('');
 
 	// reflect sort indicator on the active header
@@ -148,6 +197,28 @@ function initLogi() {
 	logiInitialised = true;
 	const filter = document.getElementById('logi-filter');
 	if (filter) filter.addEventListener('input', e => { logiFilter = e.target.value.trim(); logiRenderBoard(); });
+
+	// Coordination actions (delegated on the board body — survives re-renders).
+	const body = document.getElementById('logi-board-body');
+	if (body) {
+		body.addEventListener('click', e => {
+			const claim = e.target.closest('.logi-claim');
+			if (claim) { logiPostJob(claim.getAttribute('data-job'), 'claim'); return; }
+			const rel = e.target.closest('.logi-release');
+			if (rel) { logiPostJob(rel.getAttribute('data-job'), 'release'); return; }
+			const note = e.target.closest('.logi-note.editable');
+			if (note) {
+				const jid = note.getAttribute('data-job');
+				const cur = (logiJobBoard[jid] && logiJobBoard[jid].note) || '';
+				const text = prompt('Note for ' + jid, cur);
+				if (text !== null) logiPostJobBody(jid, 'note', text, false);
+			}
+		});
+		body.addEventListener('change', e => {
+			const sel = e.target.closest('.logi-status-sel');
+			if (sel) logiPostJobBody(sel.getAttribute('data-job'), 'status', JSON.stringify({ status: sel.value }), true);
+		});
+	}
 	document.querySelectorAll('#logi-board th[data-sort]').forEach(th => {
 		th.addEventListener('click', () => {
 			const key = th.getAttribute('data-sort');

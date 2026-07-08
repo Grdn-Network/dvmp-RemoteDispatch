@@ -14,7 +14,7 @@ namespace DvMod.RemoteDispatch
         private static readonly TimeSpan SessionTimeout = TimeSpan.FromMinutes(5);
         private static readonly object allSesssionsLock = new object();
         private static readonly Dictionary<string, Session> allSessions = new Dictionary<string, Session>();
-        private static readonly HashSet<string> BaseTags = new HashSet<string>() { "cars", "jobs", "junctions", "player", "signals", "zones", "notes", "chat", "xfer" };
+        private static readonly HashSet<string> BaseTags = new HashSet<string>() { "cars", "jobs", "junctions", "player", "signals", "zones", "notes", "chat", "xfer", "jobboard" };
 
         // Pre-baked JSON for frequently-updated tags (trainset positions).
         // Written on the Unity main thread; read on HTTP handler threads.
@@ -193,6 +193,7 @@ namespace DvMod.RemoteDispatch
                 "notes" => DispatchCollab.GetNotesJObject(),
                 "chat" => DispatchCollab.GetChatJObject(),
                 "xfer" => XferSystem.GetStateJObject(),
+                "jobboard" => JobBoard.GetStateJObject(),
                 _ when tag.Contains('-') => GetUpdateForSplitTag(tag),
                 _ => throw new NotImplementedException($"Unexpected update tag {tag}"),
             };

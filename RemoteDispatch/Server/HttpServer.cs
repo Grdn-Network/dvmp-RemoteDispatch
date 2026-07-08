@@ -174,6 +174,12 @@ namespace DvMod.RemoteDispatch
 			case "xfer":
 				HandleXferRequest(context);
 				break;
+			case "jobboard":
+				Render200(context, JobBoard.GetStateJObject());
+				break;
+			case "job":
+				HandleJobRequest(context);
+				break;
 			case "ws":
 #if DEBUG
 				Main.Log("/ws endpoint hit");
@@ -437,6 +443,47 @@ namespace DvMod.RemoteDispatch
 			{
 				Main.Warning($"Bad /signals/bulk request: {e.Message}");
 				RenderEmpty(context, 400);
+			}
+		}
+
+		// POST /job/{jobId}/claim | /release | /status {status} | /note (body = text)
+		private static void HandleJobRequest(HttpListenerContext context)
+		{
+			var segments = context.Request.Url.Segments;
+			if (segments.Length < 4 || context.Request.HttpMethod != "POST")
+			{
+				RenderEmpty(context, 404);
+				return;
+			}
+			var user = CollabUser(context);
+			var jobId = segments[2].TrimEnd('/');
+			switch (segments[3].TrimEnd('/'))
+			{
+			case "claim":
+				RenderEmpty(context, JobBoard.Claim(jobId, user) ? 200 : 409);
+				break;
+			case "release":
+				JobBoard.Release(jobId, user);
+				RenderEmpty(context, 200);
+				break;
+			case "status":
+				try
+				{
+					var body = JObject.Parse(ReadRequestBody(context));
+					RenderEmpty(context, JobBoard.SetStatus(jobId, user, (string?)body["status"]) ? 200 : 403);
+				}
+				catch (Exception e)
+				{
+					Main.Warning($"Bad /job/status: {e.Message}");
+					RenderEmpty(context, 400);
+				}
+				break;
+			case "note":
+				RenderEmpty(context, JobBoard.SetNote(jobId, user, ReadRequestBody(context)) ? 200 : 403);
+				break;
+			default:
+				RenderEmpty(context, 404);
+				break;
 			}
 		}
 
