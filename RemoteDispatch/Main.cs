@@ -117,6 +117,7 @@ namespace DvMod.RemoteDispatch
                 Main.Log("RemoteDispatch: multiplayer client and 'run as client' override is off — not starting the dispatch server.");
                 return;
             }
+            ZoneSystem.Load();
             HttpServer.Create();
             Updater.Create();
             CarUpdater.Start();

@@ -4,6 +4,10 @@ const metersToDegrees = 360 / earthCircumference;
 
 var loggingEnabled = false;
 
+// True when the CTC schematic panel is shown instead of the Leaflet map.
+// Read by the data-update handlers so they only refresh the visible view.
+let ctcMode = false;
+
 /////////////////////
 // map
 
@@ -372,6 +376,7 @@ function updateAllJobs(jobs) {
 	Object.entries(jobs).forEach(([jobId, jobData]) => allJobData.set(jobId, jobData));
 	updateJobList();
 	updateCarJobs();
+	if (ctcView === 'logi' && typeof updateLogi === 'function') updateLogi();
 }
 
 let jobSearchTimeoutId;
@@ -552,6 +557,8 @@ function createJunctionOverlay(junctionId) {
 
 function updateJunctionOverlay(junctionId, selectedBranch) {
 	const junction = junctions[junctionId]
+	// Remember the live branch so the CTC schematic can draw the switch blade.
+	junction.selectedBranch = selectedBranch;
 	junction.marker.getElement().innerHTML = createJunctionShape(selectedBranch) + createJunctionLabel(junctionId);
 	const selectedTrackId = junction.branches[selectedBranch]
 	trackPolyLines.get(selectedTrackId).setStyle({ color: 'steelblue', dashArray: null });
@@ -582,6 +589,7 @@ function createJunctionMarker(p, junctionId, displayName) {
 
 function updateAllJunctions(states) {
 	states.forEach((state, index) => updateJunctionOverlay(index, state))
+	if (ctcMode) updateCTC();
 }
 
 /////////////////////
@@ -590,10 +598,22 @@ function updateAllJunctions(states) {
 const signalMarkers = new Map();
 const signalIconAnchor = [12, 12];
 // Threshold for detecting signals at the same junction. Signals within this distance
-// get a lateral nudge so each is individually visible and clickable.
-// ~0.0002° ≈ 22 m in-game, which maps to roughly 18–20 px at zoom 17 (the signal
-// minimum zoom) — enough to separate the 16 px-wide signal icons without them overlapping.
-const SIGNAL_STACK_DEG = 0.0002;
+// are fanned out so each is individually visible and clickable.
+// ~0.0003° ≈ 33 m in-game — slightly wider than before so near-co-located signals
+// (whose ~20 px icons still overlap) also get separated.
+const SIGNAL_STACK_DEG = 0.0003;
+
+// Fan the n-th co-located signal (1-based stackIndex) onto a small ring around the
+// base point — phyllotaxis-style on growing rings — so even many signals sharing a
+// junction never sit on top of each other.
+function fanSignalPosition(base, stackIndex) {
+	const perRing = 6;
+	const k = stackIndex - 1;
+	const ring = 1 + Math.floor(k / perRing);
+	const angle = (k % perRing) * (Math.PI * 2 / perRing) + ring * 0.6;
+	const r = SIGNAL_STACK_DEG * 1.6 * ring;
+	return [base[0] + r * Math.sin(angle), base[1] + r * Math.cos(angle)];
+}
 
 
 function makeSafeSignalId(id) {
@@ -687,9 +707,9 @@ function createSignalMarker(signalId, signalData) {
 	// Direction (Y-rotation degrees) from DVSignals; null when not available.
 	const direction = signalData.Direction ?? null;
 
-	// Count signals already placed at essentially the same spot (opposite-facing junction
-	// signals share a coordinate). Nudge each additional one slightly north so they are
-	// individually visible and clickable at dispatch zoom levels.
+	// Count signals already placed at essentially the same spot (opposite-facing
+	// junction signals share a coordinate). Fan each additional one out around the
+	// base point so none hides under another and all stay individually clickable.
 	let stackIndex = 0;
 	signalMarkers.forEach(entry => {
 		if (!entry.position) return;
@@ -699,7 +719,7 @@ function createSignalMarker(signalId, signalData) {
 	});
 	const position = stackIndex === 0
 		? basePosition
-		: [basePosition[0] + stackIndex * SIGNAL_STACK_DEG, basePosition[1]];
+		: fanSignalPosition(basePosition, stackIndex);
 
 	const marker = L.marker(position, {
 		icon: getSignalIcon(aspect, mode, signalType, direction),
@@ -887,6 +907,7 @@ function updateAllSignals(signalsData) {
 			if (aspectSel) aspectSel.value = aspect;
 		}
 	});
+	if (ctcMode) updateCTC();
 }
 
 /////////////////////
@@ -1322,11 +1343,18 @@ function updateCarMarker(carId) {
 	updateCarColor(carId);
 }
 
+// Highlighted locos are always drawn at least this much larger than life so they
+// visibly stand out, even at normal zoom where scaleMarkerFactor is 1.
+const LOCO_HIGHLIGHT_SCALE = 2.5;
+
 function getCarOverlayBounds(carId, carData) {
 	const position = carData.position;
-	// Selected/highlighted locos scale up so they're easy to spot, but cap at 3×
-	// so they don't balloon to absurd sizes when zoomed all the way out.
-	const factor = selectedLocos.has(carId) ? Math.min(scaleMarkerFactor, 3) : 1;
+	// Selected/highlighted locos scale up so they're easy to spot: at least
+	// LOCO_HIGHLIGHT_SCALE×, growing with zoom-out but capped at 3× so they don't
+	// balloon to absurd sizes when zoomed all the way out.
+	const factor = selectedLocos.has(carId)
+		? Math.max(LOCO_HIGHLIGHT_SCALE, Math.min(scaleMarkerFactor, 3))
+		: 1;
 	const length = metersToDegrees * carData.length * factor;
 	const width = metersToDegrees * carWidthMeters * factor;
 	return [[position[0] - width / 2, position[1] - length / 2], [position[0] + width / 2, position[1] + length / 2]];
@@ -1379,6 +1407,8 @@ function updateAllCars(updateCarData) {
 		if (!allCarData.has(id))
 			selectedLocos.delete(id);
 	updatePlayerLocoAssignments();
+	if (ctcMode) updateCTC();
+	if (ctcView === 'logi' && typeof updateLogi === 'function') updateLogi();
 }
 
 function updateCars(cars) {
@@ -1386,6 +1416,7 @@ function updateCars(cars) {
 		updateCar(carId, carData));
 	updatePlayerLocoAssignments();
 	updateTrainBoard();
+	if (ctcMode) updateCTC();
 }
 
 /////////////////////
@@ -1617,6 +1648,18 @@ function applyUpdate(updateData) {
 			case 'signals':
 				updateAllSignals(data);
 				break;
+			case 'notes':
+				handleNotesUpdate(data);
+				break;
+			case 'chat':
+				handleChat(data);
+				break;
+			case 'zones':
+				handleZoneState(data);
+				break;
+			case 'xfer':
+				handleXfer(data);
+				break;
 			default:
 				const segments = tag.split('-');
 				switch (segments[0]) {
@@ -1820,6 +1863,41 @@ function buildSignalsSidebar(installed) {
 }
 
 let signalsInstalled = false;
+
+/////////////////////
+// View switch: Map / CTC / Logistics
+
+// ctcView is the active view; ctcMode stays as a derived boolean so the existing
+// "if (ctcMode) updateCTC()" data hooks keep working. logiView drives the
+// logistics screen the same way.
+let ctcView = 'map';
+
+async function setView(view) {
+	ctcView = view;
+	ctcMode = view === 'ctc';
+	const mapOnly = view === 'map';
+	document.getElementById('map').style.display = mapOnly ? '' : 'none';
+	document.getElementById('search').style.display = mapOnly ? '' : 'none';
+	// The RD sidebar stays available in CTC (its tabs are useful there); the
+	// Logistics screen is self-contained, so hide it there.
+	const sidebar = document.getElementById('sidebar');
+	if (sidebar) sidebar.style.display = view === 'logi' ? 'none' : '';
+	document.getElementById('ctc-panel').classList.toggle('active', view === 'ctc');
+	const logiPanel = document.getElementById('logi-panel');
+	if (logiPanel) logiPanel.classList.toggle('active', view === 'logi');
+	document.querySelectorAll('#viewSwitch button').forEach(b =>
+		b.classList.toggle('active', b.getAttribute('data-view') === view));
+	if (view === 'ctc') {
+		await initCTC();
+		updateCTC();
+	} else if (view === 'logi' && typeof initLogi === 'function') {
+		initLogi();
+		updateLogi();
+	}
+}
+
+document.querySelectorAll('#viewSwitch button').forEach(b =>
+	b.addEventListener('click', () => setView(b.getAttribute('data-view'))));
 
 const signalsReady = junctionsReady
 	.then(_ => fetch(new URL('/signals', location)))

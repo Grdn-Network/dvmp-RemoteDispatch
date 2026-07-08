@@ -137,6 +137,14 @@ namespace DvMod.RemoteDispatch
 #if DEBUG
 				Main.Log("/signals endpoint hit");
 #endif
+				// POST /signals/bulk — set mode (+ optional aspect) on many signals at once.
+				if (request.Url.Segments.Length >= 3
+					&& request.Url.Segments[2].TrimEnd('/') == "bulk"
+					&& request.HttpMethod == "POST")
+				{
+					HandleSignalsBulkRequest(context);
+					break;
+				}
 				string signalsJson = Main.settings.featureFlags.enableSignals ? JsonConvert.SerializeObject(SignalsShim.GetAllSignalsData()) : JsonConvert.SerializeObject(new JObject());
 				Render200(context, ContentTypes.Json, signalsJson);
 				break;
@@ -145,6 +153,26 @@ namespace DvMod.RemoteDispatch
 				Main.Log("/signal endpoint hit");
 #endif
 				await HandleSignalRequest(context);
+				break;
+			case "whoami":
+				// Lets the web client learn its own authenticated name so it can do
+				// "owned-by-me" / xfer-targeting checks the server enforces anyway.
+				Render200(context, new JObject { ["username"] = CollabUser(context) });
+				break;
+			case "zones":
+				Render200(context, ZoneSystem.GetZoneStateJObject());
+				break;
+			case "zone":
+				HandleZoneRequest(context);
+				break;
+			case "notes":
+				HandleNotesRequest(context);
+				break;
+			case "chat":
+				HandleChatRequest(context);
+				break;
+			case "xfer":
+				HandleXferRequest(context);
 				break;
 			case "ws":
 #if DEBUG
@@ -165,28 +193,32 @@ namespace DvMod.RemoteDispatch
 		// /updates). Reuses the same per-session update machinery via WebSocketPump.
 		private static async Task HandleWebSocketRequest(HttpListenerContext context)
 		{
-			if (!context.Request.IsWebSocketRequest)
+			// Do NOT gate on context.Request.IsWebSocketRequest — Mono returns false even
+			// for a valid upgrade (confirmed in-game). Validate the header ourselves, then
+			// do the handshake + framing on the raw stream (RawWebSocket), since Mono's
+			// HttpListener AcceptWebSocketAsync is unreliable.
+			var upgradeHeader = context.Request.Headers["Upgrade"];
+			if (string.IsNullOrEmpty(upgradeHeader)
+				|| upgradeHeader.IndexOf("websocket", StringComparison.OrdinalIgnoreCase) < 0)
 			{
+				Main.Log($"/ws: not a websocket upgrade (Upgrade='{upgradeHeader}', "
+					+ $"Connection='{context.Request.Headers["Connection"]}')");
 				RenderEmpty(context, 400);
 				return;
 			}
 
-			HttpListenerWebSocketContext wsContext;
+			var username = context.User?.Identity?.Name ?? "";
 			try
 			{
-				// Mono's ManagedWebSocket honours keepAliveInterval (ping frames), which keeps
-				// the connection alive through the Cloudflare tunnel.
-				wsContext = await context.AcceptWebSocketAsync(subProtocol: null, receiveBufferSize: 4096, keepAliveInterval: TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+				var ok = await RawWebSocket.Run(context, username).ConfigureAwait(false);
+				if (!ok)
+					try { RenderEmpty(context, 500); } catch { }
 			}
 			catch (Exception e)
 			{
-				Main.Log($"WebSocket upgrade failed: {e.Message}");
+				Main.Log($"/ws: raw websocket failed: {e.Message}");
 				try { RenderEmpty(context, 500); } catch { }
-				return;
 			}
-
-			var username = context.User?.Identity?.Name ?? "";
-			await WebSocketPump.Run(wsContext.WebSocket, username).ConfigureAwait(false);
 		}
 
 		private static async void HandleCarRequest(HttpListenerContext context)
@@ -309,6 +341,12 @@ namespace DvMod.RemoteDispatch
 					return;
 				}
 
+				if (!ZoneSystem.CanControlSignal(context.User.Identity.Name, signalId!))
+				{
+					RenderEmpty(context, 403);
+					return;
+				}
+
 				if (mode != null)
 				{
 					Main.DebugLog($"Setting signal {signalId} mode to {mode}");
@@ -354,6 +392,54 @@ namespace DvMod.RemoteDispatch
 			RenderEmpty(context, success ? 204 : 400);
 		}
 
+		// POST /signals/bulk  body: { "signalIds": [...], "mode": "Manual"|"Automatic", "aspect": "S1"? }
+		// Sets mode (and optional aspect, when going Manual) on many signals at once.
+		// Returns { requested, applied } so the client can confirm the API took the change.
+		private static void HandleSignalsBulkRequest(HttpListenerContext context)
+		{
+			if (!Main.settings.featureFlags.enableSignals)
+			{
+				RenderEmpty(context, 409);
+				return;
+			}
+			if (!Main.settings.permissions.HasSignalControlPermission(context.User.Identity.Name))
+			{
+				RenderEmpty(context, 403);
+				return;
+			}
+			try
+			{
+				var body = JObject.Parse(ReadRequestBody(context));
+				var mode = (string?)body["mode"];
+				var aspect = (string?)body["aspect"];
+				var idsArr = body["signalIds"] as JArray;
+				if (idsArr == null || idsArr.Count == 0 || string.IsNullOrEmpty(mode))
+				{
+					RenderEmpty(context, 400);
+					return;
+				}
+				var user = CollabUser(context);
+				int requested = 0, applied = 0;
+				foreach (var t in idsArr)
+				{
+					var id = (string?)t;
+					if (string.IsNullOrEmpty(id)) continue;
+					requested++;
+					if (!ZoneSystem.CanControlSignal(user, id!)) continue;
+					bool ok = SignalsShim.SetSignalMode(id!, mode!);
+					if (ok && mode == "Manual" && !string.IsNullOrEmpty(aspect))
+						SignalsShim.SetSignalAspect(id!, aspect!);
+					if (ok) applied++;
+				}
+				Render200(context, new JObject { ["requested"] = requested, ["applied"] = applied });
+			}
+			catch (Exception e)
+			{
+				Main.Warning($"Bad /signals/bulk request: {e.Message}");
+				RenderEmpty(context, 400);
+			}
+		}
+
 		private static async Task HandleUpdatesRequest(HttpListenerContext context)
 		{
 			if (context.Request.Url.Segments.Length < 3)
@@ -389,6 +475,11 @@ namespace DvMod.RemoteDispatch
 						RenderEmpty(context, 403);
 						return;
 					}
+					if (!ZoneSystem.CanControlJunction(context.User.Identity.Name, junctionId))
+					{
+						RenderEmpty(context, 403);
+						return;
+					}
 					var newSelectedBranch = await Updater.RunOnMainThread(() =>
 					{
 						Main.DebugLog($"Toggling J-{junctionId}.");
@@ -417,6 +508,158 @@ namespace DvMod.RemoteDispatch
 			}
 			var trainsetId = int.Parse(request.Url.Segments[2]);
 			Render200(context, CarData.GetTrainsetDataJson(trainsetId));
+		}
+
+		// Identity for the collaboration features (zones/notes/chat/xfer). A solo /
+		// no-password session is anonymous (empty name); fall back to "host" so zone
+		// claims succeed and "owned-by-me" resolves. In multiplayer, real names come
+		// from auth. (Multiple simultaneous anonymous clients share the "host" identity.)
+		private static string CollabUser(HttpListenerContext context)
+		{
+			var name = context.User?.Identity?.Name;
+			return string.IsNullOrEmpty(name) ? "host" : name;
+		}
+
+		private static string ReadRequestBody(HttpListenerContext context, int maxBytes = 65536)
+		{
+			using var ms = new MemoryStream();
+			var stream = context.Request.InputStream;
+			var buffer = new byte[8192];
+			int total = 0, read;
+			while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+			{
+				total += read;
+				if (total > maxBytes) break;
+				ms.Write(buffer, 0, read);
+			}
+			return Encoding.UTF8.GetString(ms.ToArray());
+		}
+
+		// POST /zone/{zoneId}/claim | /zone/{zoneId}/release
+		private static void HandleZoneRequest(HttpListenerContext context)
+		{
+			var segments = context.Request.Url.Segments;
+			if (segments.Length != 4 || context.Request.HttpMethod != "POST")
+			{
+				RenderEmpty(context, 404);
+				return;
+			}
+			var username = CollabUser(context);
+			var zoneId = segments[2].TrimEnd('/');
+			switch (segments[3].TrimEnd('/'))
+			{
+			case "claim":
+				RenderEmpty(context, ZoneSystem.TryClaim(username, zoneId) ? 200 : 409);
+				break;
+			case "release":
+				ZoneSystem.Release(username, zoneId);
+				RenderEmpty(context, 200);
+				break;
+			default:
+				RenderEmpty(context, 404);
+				break;
+			}
+		}
+
+		// GET /notes | POST /notes (body = plain text, last-write-wins)
+		private static void HandleNotesRequest(HttpListenerContext context)
+		{
+			switch (context.Request.HttpMethod)
+			{
+			case "GET":
+				Render200(context, DispatchCollab.GetNotesJObject());
+				break;
+			case "POST":
+				DispatchCollab.UpdateNotes(ReadRequestBody(context));
+				RenderEmpty(context, 204);
+				break;
+			default:
+				RenderEmpty(context, 405);
+				break;
+			}
+		}
+
+		// POST /chat (body = {"text": "..."})
+		private static void HandleChatRequest(HttpListenerContext context)
+		{
+			if (context.Request.HttpMethod != "POST")
+			{
+				RenderEmpty(context, 405);
+				return;
+			}
+			var username = CollabUser(context);
+			try
+			{
+				var body = ReadRequestBody(context);
+				var text = string.IsNullOrEmpty(body) ? null : (string?)JObject.Parse(body)["text"];
+				if (string.IsNullOrEmpty(text))
+				{
+					RenderEmpty(context, 400);
+					return;
+				}
+				DispatchCollab.PostChat(username, text!);
+				RenderEmpty(context, 204);
+			}
+			catch (Exception e)
+			{
+				Main.Warning($"Bad chat request: {e.Message}");
+				RenderEmpty(context, 400);
+			}
+		}
+
+		// GET /xfer | POST /xfer/offer | POST /xfer/accept/{id} | POST /xfer/reject/{id}
+		private static void HandleXferRequest(HttpListenerContext context)
+		{
+			var segments = context.Request.Url.Segments;
+			var username = CollabUser(context);
+
+			if (segments.Length == 2 && context.Request.HttpMethod == "GET")
+			{
+				Render200(context, XferSystem.GetStateJObject());
+				return;
+			}
+			if (context.Request.HttpMethod != "POST" || segments.Length < 3)
+			{
+				RenderEmpty(context, 404);
+				return;
+			}
+
+			switch (segments[2].TrimEnd('/'))
+			{
+			case "offer":
+				try
+				{
+					var body = JObject.Parse(ReadRequestBody(context));
+					var trainId = (string?)body["trainId"] ?? "";
+					var toUser = (string?)body["toUser"] ?? "";
+					var toZone = (string?)body["toZone"] ?? "";
+					var fromZone = (string?)body["fromZone"] ?? "";
+					if (string.IsNullOrEmpty(trainId) || string.IsNullOrEmpty(toUser))
+					{
+						RenderEmpty(context, 400);
+						return;
+					}
+					var offerId = XferSystem.CreateOffer(trainId, fromZone, toZone, username, toUser);
+					Render200(context, new JObject { ["offerId"] = offerId });
+				}
+				catch (Exception e)
+				{
+					Main.Warning($"Bad xfer offer: {e.Message}");
+					RenderEmpty(context, 400);
+				}
+				break;
+			case "accept":
+				if (segments.Length < 4) { RenderEmpty(context, 404); return; }
+				RenderEmpty(context, XferSystem.TryAccept(segments[3].TrimEnd('/'), username) ? 200 : 403);
+				break;
+			case "reject":
+				if (segments.Length < 4) { RenderEmpty(context, 404); return; }
+				RenderEmpty(context, XferSystem.TryReject(segments[3].TrimEnd('/'), username) ? 200 : 403);
+				break;
+			default:
+				RenderEmpty(context, 404);
+				break;
+			}
 		}
 
 		public static void Create()
@@ -456,9 +699,22 @@ namespace DvMod.RemoteDispatch
 			}
 			else
 			{
-				// Static assets embedded in the DLL don't change between game restarts.
-				// Tell the browser to cache them for 1 hour so repeated page loads are instant.
-				context.Response.Headers.Add("Cache-Control", "public, max-age=3600");
+				// The page itself and its code change between mod builds. Caching those as
+				// "public, max-age" made the browser AND the Cloudflare edge serve a stale
+				// version for up to an hour after a redeploy. Mark them no-store so a new
+				// build always takes effect; images and other assets can still cache.
+				bool volatileAsset = resourceName.EndsWith(".html")
+					|| resourceName.EndsWith(".js")
+					|| resourceName.EndsWith(".css");
+				if (volatileAsset)
+				{
+					context.Response.Headers.Add("Cache-Control", "no-store, no-cache, must-revalidate");
+					context.Response.Headers.Add("Pragma", "no-cache");
+				}
+				else
+				{
+					context.Response.Headers.Add("Cache-Control", "public, max-age=3600");
+				}
 				stream.CopyTo(context.Response.OutputStream);
 				context.Response.Close();
 			}

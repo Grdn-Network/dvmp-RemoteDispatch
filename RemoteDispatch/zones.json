@@ -1,0 +1,26 @@
+{
+  "_comment": "Dispatch zones = controller territories. For now these are three broad controllers (East / West / Harbour) shown as chips top-left; junctionIds/signalIds are empty so control is unrestricted. Later these become per-station boundary zones. junctionIds are the integer indices used by /junction/{i}/toggle; signalIds are signal id strings.",
+  "zones": [
+    {
+      "id": "EAST",
+      "name": "East Controller",
+      "color": "#3b82f6",
+      "junctionIds": [],
+      "signalIds": []
+    },
+    {
+      "id": "WEST",
+      "name": "West Controller",
+      "color": "#22c55e",
+      "junctionIds": [],
+      "signalIds": []
+    },
+    {
+      "id": "HARB",
+      "name": "Harbour Controller",
+      "color": "#f59e0b",
+      "junctionIds": [],
+      "signalIds": []
+    }
+  ]
+}
