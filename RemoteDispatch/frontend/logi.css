@@ -137,6 +137,44 @@
 .logi-status.avail { background: #12233a; color: #85b7eb; }
 .logi-status.active { background: #12281a; color: #7ee0a3; }
 
+/* ---- Job-board coordination controls (claim / status / notes) ---- */
+.logi-status-cell, .logi-note-cell { white-space: nowrap; }
+.logi-claim {
+	background: transparent;
+	color: var(--rd-text-muted);
+	border: 1px solid var(--rd-panel-border);
+	border-radius: 4px;
+	padding: 2px 9px;
+	font-size: 11px;
+	cursor: pointer;
+}
+.logi-claim:hover { color: var(--rd-accent); border-color: var(--rd-accent); }
+.logi-status-sel {
+	background: var(--rd-input-bg);
+	color: var(--rd-text);
+	border: 1px solid var(--rd-panel-border);
+	border-radius: 4px;
+	padding: 2px 6px;
+	font-size: 11px;
+	cursor: pointer;
+}
+.logi-release {
+	background: transparent;
+	color: var(--rd-text-muted);
+	border: none;
+	margin-left: 4px;
+	padding: 0 4px;
+	font-size: 13px;
+	line-height: 1;
+	cursor: pointer;
+}
+.logi-release:hover { color: var(--rd-danger); }
+.logi-owned { color: var(--rd-text-muted); font-size: 11px; }
+.logi-note { color: var(--rd-text-muted); font-size: 11px; }
+.logi-note.editable { cursor: pointer; }
+.logi-note.editable:hover { color: var(--rd-text); }
+.logi-note-add { color: var(--rd-accent); opacity: 0.85; }
+
 /* ---- Side: trains + yards ---- */
 #logi-side {
 	background: var(--rd-bg);
