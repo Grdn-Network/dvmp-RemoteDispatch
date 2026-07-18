@@ -42,18 +42,41 @@ namespace DvMod.RemoteDispatch
             }
         }
 
+        private static long _snapshotSeq;
+        private static int _lastSerialiseErrorTick; // Environment.TickCount: worker-thread safe
+
         public static void MarkTrainsetAsDirty(Trainset trainset)
         {
-            if (trainset.cars.Find(car => CarData.ShouldReturnTrainCar(car, true)) == null)
+            // Main thread: gather raw values only (Unity reads live in CarData.From).
+            // JSON building and string serialisation are pure CPU over those values,
+            // so they run on the thread pool; with dozens of moving cars this was the
+            // single biggest slice of RemoteDispatch's frame cost. The sequence gate
+            // in Sessions keeps out-of-order worker completions from ever replacing a
+            // newer snapshot with an older one.
+            var gathered = CarData.GatherTrainset(trainset);
+            if (gathered.Count == 0)
                 return;
 
-            // Serialise on the main thread right now (we're inside a coroutine).
-            // Caching the result means the HTTP response thread can serve it without
-            // a blocking RunOnMainThread call, cutting response latency significantly
-            // when Unity's main thread is busy with physics or rendering.
             var tag = $"trainset-{trainset.id}";
-            var json = CarData.SerialiseTrainsetOnMainThread(trainset);
-            Sessions.AddTagWithCache(tag, json);
+            var seq = System.Threading.Interlocked.Increment(ref _snapshotSeq);
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    var dict = new System.Collections.Generic.Dictionary<string, Newtonsoft.Json.Linq.JObject>();
+                    foreach (var pair in gathered)
+                        dict[pair.Key] = pair.Value.ToJson();
+                    Sessions.AddTagWithCacheIfNewest(tag, seq, Newtonsoft.Json.JsonConvert.SerializeObject(dict));
+                }
+                catch (System.Exception e)
+                {
+                    // No Unity APIs here: this runs on a thread-pool worker.
+                    int now = System.Environment.TickCount;
+                    if (now - _lastSerialiseErrorTick < 30000) return;
+                    _lastSerialiseErrorTick = now;
+                    Main.Log($"trainset snapshot serialisation failed: {e.GetType().Name}: {e.Message}");
+                }
+            });
         }
 
         public static void Start()

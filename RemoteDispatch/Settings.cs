@@ -16,6 +16,13 @@ namespace DvMod.RemoteDispatch
         public bool enableLogging = false;
         public bool runServerAsClientFallback = false;
 
+        // Performance (defaults tuned for busy multiplayer sessions): position pushes
+        // per second for the web map (1-4; each push serialises every moving trainset),
+        // and a lighter player-blip poll. JSON building runs off the main thread either
+        // way; these only set how often the game thread gathers positions.
+        public int positionUpdatesPerSecond = 2;
+        public bool lightPlayerPolling = true;
+
         public readonly string? version = Main.mod?.Info.Version;
 
         const char EnDash = '\u2013';
@@ -59,6 +66,10 @@ namespace DvMod.RemoteDispatch
             }
 
             enableLogging = GUILayout.Toggle(enableLogging, "Enable logging");
+
+            GUILayout.Label($"Map position updates per second (1{EnDash}4; lower = less game-thread work)");
+            positionUpdatesPerSecond = (int)GUILayout.HorizontalSlider(positionUpdatesPerSecond, 1f, 4f, GUILayout.Width(200));
+            lightPlayerPolling = GUILayout.Toggle(lightPlayerPolling, "Light player-blip polling (4/sec instead of 10/sec)");
 
             featureFlags.Draw();
 

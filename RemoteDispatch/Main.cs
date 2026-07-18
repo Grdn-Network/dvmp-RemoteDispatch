@@ -121,8 +121,16 @@ namespace DvMod.RemoteDispatch
             HttpServer.Create();
             Updater.Create();
             CarUpdater.Start();
-            SignalsShim.Initialize();
+            // The signals bridge polls DVSignals state; with the feature flag off (the
+            // default) it must cost nothing, so it is never even initialised.
+            if (settings.featureFlags.enableSignals)
+            {
+                SignalsShim.Initialize();
+                signalsStarted = true;
+            }
         }
+
+        private static bool signalsStarted;
 
         /// <summary>
         /// True if this instance is the multiplayer host, or if multiplayer is not loaded
@@ -191,7 +199,11 @@ namespace DvMod.RemoteDispatch
             CarUpdater.Stop();
             Updater.Destroy();
             HttpServer.Destroy();
-            SignalsShim.Teardown();
+            if (signalsStarted)
+            {
+                SignalsShim.Teardown();
+                signalsStarted = false;
+            }
         }
 
         public static void Log(string message)
