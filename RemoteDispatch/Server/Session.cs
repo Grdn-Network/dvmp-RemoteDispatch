@@ -186,7 +186,7 @@ namespace DvMod.RemoteDispatch
                 "carsWithLocomotives" => JObject.FromObject(CarData.GetAllCarData(true).ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToJson())),
                 "jobs" => JObject.FromObject(JobData.GetAllJobData()),
                 "junctions" => new JArray(Junctions.GetAllJunctionStates()),
-                "player" => PlayerData.GetPlayerData(),
+                "player" => PlayerData.GetDecoratedPlayerData(),
                 "playerNull" => new JObject(),
                 "signals" => Main.settings.featureFlags.enableSignals ? SignalsShim.GetAllSignalsData() : new JObject(),
                 "zones" => ZoneSystem.GetZoneStateJObject(),
@@ -211,7 +211,23 @@ namespace DvMod.RemoteDispatch
         public static async Task<string> GetUpdates(string username, string sessionId)
         {
             var tags = await GetTags(username, sessionId).ConfigureAwait(false);
-            return JsonConvert.SerializeObject(tags.ToDictionary(tag => GetFrontendTagName(tag), tag => GetUpdateForTag(tag)));
+            // One failing tag must never sink the whole batch: before this guard, a
+            // single serialization throw (a half-despawned car, a job shape the code
+            // has not met) ended the websocket pump and froze the map until a manual
+            // refresh. The broken tag is logged and dropped; positions keep flowing.
+            var result = new Dictionary<string, JToken?>();
+            foreach (var tag in tags)
+            {
+                try
+                {
+                    result[GetFrontendTagName(tag)] = GetUpdateForTag(tag);
+                }
+                catch (Exception e)
+                {
+                    Main.Log($"update for tag '{tag}' failed and was skipped: {e.GetType().Name}: {e.Message}");
+                }
+            }
+            return JsonConvert.SerializeObject(result);
         }
     }
 }

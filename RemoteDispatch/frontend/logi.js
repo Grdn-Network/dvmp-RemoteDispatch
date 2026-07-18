@@ -43,7 +43,10 @@ function logiRow(jobId, jobData) {
 		type: LOGI_JOB_TYPES[typeCode] || typeCode || '—',
 		origin,
 		dest: jobData.destinationYardId || '—',
-		cars: logiCarCount(jobData),
+		// DLE hauls are carless until crews bring empties: show the planned count
+		cars: jobData.dlePlannedCars || logiCarCount(jobData),
+		cargo: jobData.dleCargo || '',
+		crew: jobData.dleAssigned || '',
 		mass: jobData.mass || 0,
 		pay: jobData.basePayment || 0,
 		lic: (jobData.requiredLicenses || []).join(' '),
@@ -55,7 +58,7 @@ function logiRow(jobId, jobData) {
 function logiMatches(row) {
 	if (!logiFilter) return true;
 	const f = logiFilter.toLowerCase();
-	return [row.id, row.type, row.origin, row.dest, row.lic].some(s => String(s).toLowerCase().includes(f));
+	return [row.id, row.type, row.origin, row.dest, row.lic, row.cargo, row.crew].some(s => String(s).toLowerCase().includes(f));
 }
 
 function logiRenderBoard() {
@@ -75,12 +78,12 @@ function logiRenderBoard() {
 	body.innerHTML = rows.map(r => `<tr class="${r.active ? 'logi-active' : ''}">`
 		+ `<td class="logi-mono">${logiEsc(r.id)}</td>`
 		+ `<td>${logiEsc(r.type)}</td>`
-		+ `<td class="logi-route">${logiEsc(r.origin)} &rarr; ${logiEsc(r.dest)}</td>`
+		+ `<td class="logi-route">${logiEsc(r.origin)} &rarr; ${logiEsc(r.dest)}${r.cargo ? ` <span class="logi-cargo">&middot; ${logiEsc(r.cargo)}</span>` : ''}</td>`
 		+ `<td class="logi-num">${r.cars}</td>`
 		+ `<td class="logi-num">${Math.round(r.mass)}t</td>`
 		+ `<td class="logi-num logi-pay">${logiMoney.format(r.pay)}</td>`
 		+ `<td class="logi-lic">${logiEsc(r.lic)}</td>`
-		+ `<td><span class="logi-status ${r.active ? 'active' : 'avail'}">${logiEsc(r.status)}</span></td>`
+		+ `<td><span class="logi-status ${r.active ? 'active' : 'avail'}">${logiEsc(r.status)}</span>${r.crew ? ` <span class="logi-crew">${logiEsc(r.crew)}</span>` : ''}</td>`
 		+ `</tr>`).join('');
 
 	// reflect sort indicator on the active header

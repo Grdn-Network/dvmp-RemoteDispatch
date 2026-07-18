@@ -296,6 +296,22 @@ function jobElem(jobId, jobData) {
 	row.append(jobMassCell, jobLengthCell, jobPaymentCell);
 	tbody.appendChild(row);
 
+	// Company Haul booklet data (Derail Logistics Engine): cargo, planned cars and
+	// crew live in DLE, not in the vanilla job, so the server sends them separately.
+	if (jobData.dleCargo || jobData.dlePlannedCars || jobData.dleAssigned || jobData.dleUnpaid) {
+		row = document.createElement('tr');
+		const dleCell = document.createElement('th');
+		dleCell.setAttribute('colspan', CarsPerRow);
+		dleCell.classList.add('jobList-dleInfo');
+		const bits = [];
+		if (jobData.dleCargo) bits.push(`${jobData.dleCargo} × ${jobData.dlePlannedCars || '?'}`);
+		if (jobData.dleAssigned) bits.push(`crew: ${jobData.dleAssigned}`);
+		if (jobData.dleUnpaid) bits.push('unpaid move');
+		dleCell.textContent = bits.join(' · ');
+		row.appendChild(dleCell);
+		tbody.appendChild(row);
+	}
+
 	jobData.tasks.forEach(task => {
 		row = document.createElement('tr');
 		const startTrackCell = document.createElement('th');

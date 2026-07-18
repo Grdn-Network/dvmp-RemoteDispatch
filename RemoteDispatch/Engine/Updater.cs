@@ -37,18 +37,32 @@ namespace DvMod.RemoteDispatch
             }
         }
 
+        // A coroutine that lets an exception escape is DEAD: Unity stops it silently
+        // and that update stream never runs again for the session. Every loop body
+        // below is guarded; failures log (throttled) instead of killing the stream.
+        private static float lastCoroErrorLogged;
+
+        private static void LogCoroError(string where, Exception e)
+        {
+            if (Time.unscaledTime - lastCoroErrorLogged < 30f) return;
+            lastCoroErrorLogged = Time.unscaledTime;
+            Main.Log($"{where} failed (stream continues): {e.GetType().Name}: {e.Message}");
+        }
+
         private IEnumerator CheckPlayerTransformCoro()
         {
             while (true)
             {
                 yield return WaitFor.Seconds(0.1f);
-                PlayerData.CheckTransform();
+                try { PlayerData.CheckTransform(); }
+                catch (Exception e) { LogCoroError(nameof(CheckPlayerTransformCoro), e); }
             }
         }
 
         // Tracks which trainset IDs were moving last poll cycle so we can
         // send one final dirty update the frame a trainset transitions to stationary.
         private readonly HashSet<int> _movingTrainsetIds = new HashSet<int>();
+        private int _pollCount;
 
         private IEnumerator CheckTrainsetsCoro()
         {
@@ -58,29 +72,40 @@ namespace DvMod.RemoteDispatch
                 // smooth for the web dispatcher map and costs 1/15th the CPU budget.
                 yield return WaitFor.Seconds(0.25f);
 
-                var currentlyMoving = new HashSet<int>();
-                foreach (var trainset in Trainset.allSets)
+                try
                 {
-                    if (trainset.firstCar == null) continue;
-
-                    if (!trainset.firstCar.isStationary)
+                    var currentlyMoving = new HashSet<int>();
+                    foreach (var trainset in Trainset.allSets)
                     {
-                        currentlyMoving.Add(trainset.id);
-                        CarUpdater.MarkTrainsetAsDirty(trainset);
+                        if (trainset.firstCar == null) continue;
+
+                        if (!trainset.firstCar.isStationary)
+                        {
+                            currentlyMoving.Add(trainset.id);
+                            CarUpdater.MarkTrainsetAsDirty(trainset);
+                        }
                     }
-                }
 
-                // Trainsets that just stopped: push one final position update so the
-                // web map shows the correct resting position, then stop polling them.
-                foreach (var trainset in Trainset.allSets)
+                    // Trainsets that just stopped: push one final position update so the
+                    // web map shows the correct resting position, then stop polling them.
+                    foreach (var trainset in Trainset.allSets)
+                    {
+                        if (_movingTrainsetIds.Contains(trainset.id) && !currentlyMoving.Contains(trainset.id))
+                            CarUpdater.MarkTrainsetAsDirty(trainset);
+                    }
+
+                    _movingTrainsetIds.Clear();
+                    foreach (int id in currentlyMoving)
+                        _movingTrainsetIds.Add(id);
+
+                    // Loco positions for the "[L-014] Name" player labels, ~1 Hz.
+                    if (++_pollCount % 4 == 0)
+                        PlayerData.RefreshLocoCache();
+                }
+                catch (Exception e)
                 {
-                    if (_movingTrainsetIds.Contains(trainset.id) && !currentlyMoving.Contains(trainset.id))
-                        CarUpdater.MarkTrainsetAsDirty(trainset);
+                    LogCoroError(nameof(CheckTrainsetsCoro), e);
                 }
-
-                _movingTrainsetIds.Clear();
-                foreach (int id in currentlyMoving)
-                    _movingTrainsetIds.Add(id);
             }
         }
 

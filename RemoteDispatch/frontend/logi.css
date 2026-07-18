@@ -183,3 +183,8 @@
 }
 .logi-yard b { color: var(--rd-text); font-weight: 500; }
 .logi-empty { padding: 6px 14px; font-size: 12px; color: var(--rd-text-muted); }
+
+/* DLE booklet data on board rows */
+.logi-cargo { color: #8fa5bd; font-size: 0.9em; }
+.logi-crew { color: #8fa5bd; font-size: 0.85em; margin-left: 4px; }
+
