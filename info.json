@@ -2,10 +2,12 @@
   "Id": "RemoteDispatch",
   "DisplayName": "Remote Dispatch",
   "Author": "Zeibach and Dom Routley",
-  "Version": "1.6.1",
+  "Version": "1.7.0",
   "AssemblyName": "RemoteDispatch.dll",
   "EntryMethod": "DvMod.RemoteDispatch.Main.Load",
-  "LoadAfter": [ "PersistentJobsMod" ],
+  "LoadAfter": [
+    "PersistentJobsMod"
+  ],
   "ManagerVersion": "0.27.3",
   "MultiplayerCompatibility": "Host",
   "HomePage": "https://github.com/domroutley/dv-remote-dispatch",
