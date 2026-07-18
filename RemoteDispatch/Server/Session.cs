@@ -33,6 +33,20 @@ namespace DvMod.RemoteDispatch
             AddTag(tag);
         }
 
+        // Position snapshots serialise on worker threads, so two snapshots of the same
+        // trainset can finish out of order. The sequence gate makes sure an older
+        // snapshot can never overwrite a newer one (the final at-rest position matters).
+        private static readonly ConcurrentDictionary<string, long> _tagCacheSeq =
+            new ConcurrentDictionary<string, long>();
+
+        public static void AddTagWithCacheIfNewest(string tag, long seq, string json)
+        {
+            var winner = _tagCacheSeq.AddOrUpdate(tag, seq, (_, cur) => Math.Max(cur, seq));
+            if (winner != seq) return; // a newer snapshot already claimed this tag
+            _tagCache[tag] = json;
+            AddTag(tag);
+        }
+
         public static event Action<string>? OnSessionStarted;
         public static event Action<string>? OnSessionEnded;
 

@@ -53,7 +53,7 @@ namespace DvMod.RemoteDispatch
         {
             while (true)
             {
-                yield return WaitFor.Seconds(0.1f);
+                yield return WaitFor.Seconds(Main.settings.lightPlayerPolling ? 0.25f : 0.1f);
                 try { PlayerData.CheckTransform(); }
                 catch (Exception e) { LogCoroError(nameof(CheckPlayerTransformCoro), e); }
             }
@@ -68,9 +68,11 @@ namespace DvMod.RemoteDispatch
         {
             while (true)
             {
-                // Poll at 4 Hz instead of every frame — position updates 4×/sec are
-                // smooth for the web dispatcher map and costs 1/15th the CPU budget.
-                yield return WaitFor.Seconds(0.25f);
+                // Position rate comes from settings (default 2/sec): every push gathers
+                // and serialises all moving trainsets, so this knob IS the mod's main
+                // frame cost. The gather stays on this thread; JSON goes to workers.
+                int hz = Math.Max(1, Math.Min(4, Main.settings.positionUpdatesPerSecond));
+                yield return WaitFor.Seconds(1f / hz);
 
                 try
                 {
@@ -99,7 +101,7 @@ namespace DvMod.RemoteDispatch
                         _movingTrainsetIds.Add(id);
 
                     // Loco positions for the "[L-014] Name" player labels, ~1 Hz.
-                    if (++_pollCount % 4 == 0)
+                    if (++_pollCount % hz == 0)
                         PlayerData.RefreshLocoCache();
                 }
                 catch (Exception e)

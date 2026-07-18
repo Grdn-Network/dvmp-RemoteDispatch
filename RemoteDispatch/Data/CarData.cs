@@ -109,16 +109,20 @@ namespace DvMod.RemoteDispatch
         }
 
         /// <summary>
-        /// Serialise a trainset directly — must be called from the Unity main thread.
-        /// Used by CarUpdater to pre-bake the JSON at dirty-mark time so the HTTP
-        /// response thread never has to round-trip back to the main thread for position data.
+        /// Main-thread half of a position snapshot: every Unity read (transforms,
+        /// controller state) happens inside From(), leaving plain CarData values.
+        /// The JSON building and serialisation of those values is pure CPU work and
+        /// runs on a worker thread (CarUpdater), keeping it off the frame budget.
         /// </summary>
-        public static string SerialiseTrainsetOnMainThread(Trainset trainset)
+        public static List<KeyValuePair<string, CarData>> GatherTrainset(Trainset trainset)
         {
-            var dict = trainset.cars
-                .Where(car => ShouldReturnTrainCar(car, true))
-                .ToDictionary(car => car.ID, car => From(car).ToJson());
-            return Newtonsoft.Json.JsonConvert.SerializeObject(dict);
+            var list = new List<KeyValuePair<string, CarData>>();
+            foreach (var car in trainset.cars)
+            {
+                if (!ShouldReturnTrainCar(car, true)) continue;
+                list.Add(new KeyValuePair<string, CarData>(car.ID, From(car)));
+            }
+            return list;
         }
 
         public static bool ShouldReturnTrainCar(TrainCar trainCar, bool? withLocomotives)
