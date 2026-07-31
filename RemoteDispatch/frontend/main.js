@@ -4,10 +4,6 @@ const metersToDegrees = 360 / earthCircumference;
 
 var loggingEnabled = false;
 
-// True when the CTC schematic panel is shown instead of the Leaflet map.
-// Read by the data-update handlers so they only refresh the visible view.
-let ctcMode = false;
-
 /////////////////////
 // map
 
@@ -392,7 +388,6 @@ function updateAllJobs(jobs) {
 	Object.entries(jobs).forEach(([jobId, jobData]) => allJobData.set(jobId, jobData));
 	updateJobList();
 	updateCarJobs();
-	if (ctcView === 'logi' && typeof updateLogi === 'function') updateLogi();
 }
 
 let jobSearchTimeoutId;
@@ -605,7 +600,6 @@ function createJunctionMarker(p, junctionId, displayName) {
 
 function updateAllJunctions(states) {
 	states.forEach((state, index) => updateJunctionOverlay(index, state))
-	if (ctcMode) updateCTC();
 }
 
 /////////////////////
@@ -923,7 +917,6 @@ function updateAllSignals(signalsData) {
 			if (aspectSel) aspectSel.value = aspect;
 		}
 	});
-	if (ctcMode) updateCTC();
 }
 
 /////////////////////
@@ -1423,8 +1416,6 @@ function updateAllCars(updateCarData) {
 		if (!allCarData.has(id))
 			selectedLocos.delete(id);
 	updatePlayerLocoAssignments();
-	if (ctcMode) updateCTC();
-	if (ctcView === 'logi' && typeof updateLogi === 'function') updateLogi();
 }
 
 function updateCars(cars) {
@@ -1432,7 +1423,6 @@ function updateCars(cars) {
 		updateCar(carId, carData));
 	updatePlayerLocoAssignments();
 	updateTrainBoard();
-	if (ctcMode) updateCTC();
 }
 
 /////////////////////
@@ -1664,18 +1654,6 @@ function applyUpdate(updateData) {
 			case 'signals':
 				updateAllSignals(data);
 				break;
-			case 'notes':
-				handleNotesUpdate(data);
-				break;
-			case 'chat':
-				handleChat(data);
-				break;
-			case 'zones':
-				handleZoneState(data);
-				break;
-			case 'xfer':
-				handleXfer(data);
-				break;
 			default:
 				const segments = tag.split('-');
 				switch (segments[0]) {
@@ -1879,41 +1857,6 @@ function buildSignalsSidebar(installed) {
 }
 
 let signalsInstalled = false;
-
-/////////////////////
-// View switch: Map / CTC / Logistics
-
-// ctcView is the active view; ctcMode stays as a derived boolean so the existing
-// "if (ctcMode) updateCTC()" data hooks keep working. logiView drives the
-// logistics screen the same way.
-let ctcView = 'map';
-
-async function setView(view) {
-	ctcView = view;
-	ctcMode = view === 'ctc';
-	const mapOnly = view === 'map';
-	document.getElementById('map').style.display = mapOnly ? '' : 'none';
-	document.getElementById('search').style.display = mapOnly ? '' : 'none';
-	// The RD sidebar stays available in CTC (its tabs are useful there); the
-	// Logistics screen is self-contained, so hide it there.
-	const sidebar = document.getElementById('sidebar');
-	if (sidebar) sidebar.style.display = view === 'logi' ? 'none' : '';
-	document.getElementById('ctc-panel').classList.toggle('active', view === 'ctc');
-	const logiPanel = document.getElementById('logi-panel');
-	if (logiPanel) logiPanel.classList.toggle('active', view === 'logi');
-	document.querySelectorAll('#viewSwitch button').forEach(b =>
-		b.classList.toggle('active', b.getAttribute('data-view') === view));
-	if (view === 'ctc') {
-		await initCTC();
-		updateCTC();
-	} else if (view === 'logi' && typeof initLogi === 'function') {
-		initLogi();
-		updateLogi();
-	}
-}
-
-document.querySelectorAll('#viewSwitch button').forEach(b =>
-	b.addEventListener('click', () => setView(b.getAttribute('data-view'))));
 
 const signalsReady = junctionsReady
 	.then(_ => fetch(new URL('/signals', location)))

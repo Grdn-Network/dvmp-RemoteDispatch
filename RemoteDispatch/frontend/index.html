@@ -6,8 +6,6 @@
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.7.1/dist/leaflet.css" integrity="sha256-BPfK9M5v34c2XP6p0cxVz1mUQLst0gTLk0mlc7kuodA=" crossorigin="anonymous">
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-sidebar-v2@3.2.3/css/leaflet-sidebar.min.css" integrity="sha256-10dwwxs/pdWEYoC56aJvmY3kbMMa9/3uSWWNkGcrGq8=" crossorigin="anonymous">
 	<link rel="stylesheet" href="res/style.css">
-	<link rel="stylesheet" href="res/ctc.css">
-	<link rel="stylesheet" href="res/logi.css">
 	<script src="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/js/all.min.js" integrity="sha256-gSqw5G+Gss6YqyQlqyIkuQ0IRZUqGsDVq9c0tiF+mL8=" crossorigin="anonymous"></script>
 	<script src="https://cdn.jsdelivr.net/npm/leaflet@1.7.1/dist/leaflet-src.js" integrity="sha256-dG7rUAec0UN0e3nlMEuYJzsbK0rpoz4hBbNp0ir9iF8=" crossorigin="anonymous"></script>
 	<script src="res/leaflet.rotatedImageOverlay.js"></script>
@@ -191,114 +189,11 @@
 	</div>
 	<div id="map" class="dark" style="height:100vh"></div>
 
-	<!-- CTC schematic dispatch panel. Hidden until the mode toggle activates it;
-	     shares the live data feed with the map. -->
-	<div id="ctc-panel">
-		<svg id="ctc-schematic" xmlns="http://www.w3.org/2000/svg"></svg>
-
-		<!-- Zone claim/release chips (populated from /zones) -->
-		<div id="ctc-zonebar"></div>
-
-		<!-- Bulk signal control: take all / in-view / none under manual red -->
-		<div id="ctc-toolbar">
-			<span class="ctc-toolbar-label">Signals</span>
-			<button id="ctc-sig-all" title="Set every signal to manual red">Hold all</button>
-			<button id="ctc-sig-view" title="Hold the signals currently in view">Hold view</button>
-			<button id="ctc-sig-release" title="Return all signals to automatic">Release</button>
-			<span class="ctc-toolbar-sep"></span>
-			<button id="ctc-route-btn" title="Set a route: click junction A then B">Route</button>
-			<button id="ctc-route-clear" title="Release all active routes (signals back to red)">Clear</button>
-			<span class="ctc-toolbar-sep"></span>
-			<button id="ctc-layers-btn" title="Show/hide map layers">Layers</button>
-			<span id="ctc-toolbar-status"></span>
-		</div>
-
-		<!-- Layer visibility toggles (declutter / future info levels) -->
-		<div id="ctc-layers">
-			<div class="ctc-layers-title">Layers</div>
-			<label><input type="checkbox" data-layer="signals" checked> Signals</label>
-			<label><input type="checkbox" data-layer="junctions" checked> Switches</label>
-			<label><input type="checkbox" data-layer="junction-labels"> Switch labels</label>
-			<label><input type="checkbox" data-layer="trains" checked> Trains</label>
-			<label><input type="checkbox" data-layer="occupancy" checked> Occupancy</label>
-			<label><input type="checkbox" data-layer="jobs" checked> Job info</label>
-		</div>
-
-		<!-- Route preview confirmation -->
-		<div id="ctc-route-confirm">
-			<span id="ctc-route-confirm-text"></span>
-			<button id="ctc-route-set">Set</button>
-			<button id="ctc-route-cancel">Cancel</button>
-		</div>
-
-		<!-- Train transfer offer banner -->
-		<div id="ctc-xfer-banner">
-			<span id="ctc-xfer-text"></span>
-			<button id="ctc-xfer-accept">Accept</button>
-			<button id="ctc-xfer-reject">Reject</button>
-		</div>
-
-		<!-- Shared notepad + dispatcher chat -->
-		<div id="ctc-collab">
-			<div id="ctc-collab-tabs">
-				<button class="ctc-tab active" data-tab="notes">Notes</button>
-				<button class="ctc-tab" data-tab="chat">Chat</button>
-			</div>
-			<textarea id="ctc-notes-area" placeholder="Shared dispatcher notes…"></textarea>
-			<div id="ctc-chat-wrap">
-				<div id="ctc-chat-log"></div>
-				<input id="ctc-chat-input" type="text" placeholder="Send message…" autocomplete="off">
-			</div>
-		</div>
-	</div>
-
-	<div id="viewSwitch">
-		<button data-view="map" class="active">Map</button>
-		<button data-view="ctc">CTC</button>
-		<button data-view="logi">Logi</button>
-	</div>
 	<div id="search">
 		<input id="searchInput" type="text" placeholder="Go to…" autocomplete="off">
 		<ul id="searchResults"></ul>
 	</div>
 
-	<!-- Logistics Officer screen: job board + trains roster + yard tallies -->
-	<div id="logi-panel">
-		<div id="logi-header">
-			<span class="logi-title">Logistics Officer</span>
-			<input id="logi-filter" type="text" placeholder="Filter jobs…" autocomplete="off">
-			<span id="logi-kpis"></span>
-		</div>
-		<div id="logi-body">
-			<div id="logi-board-wrap">
-				<table id="logi-board">
-					<thead>
-						<tr>
-							<th data-sort="id">Job</th>
-							<th data-sort="type">Type</th>
-							<th data-sort="dest">Route</th>
-							<th data-sort="cars" class="logi-num">Cars</th>
-							<th data-sort="mass" class="logi-num">Mass</th>
-							<th data-sort="pay" class="logi-num">Pay</th>
-							<th>Lic</th>
-							<th data-sort="status">Status</th>
-						</tr>
-					</thead>
-					<tbody id="logi-board-body"></tbody>
-				</table>
-			</div>
-			<div id="logi-side">
-				<div class="logi-section-title">Trains rolling</div>
-				<div id="logi-trains"></div>
-				<div class="logi-section-title">Yards (jobs)</div>
-				<div id="logi-yards"></div>
-			</div>
-		</div>
-	</div>
-
-	<script src="res/ctc-layout.js"></script>
-	<script src="res/ctc.js"></script>
-	<script src="res/logi.js"></script>
 	<script src="res/main.js"></script>
 </body>
 </html>
