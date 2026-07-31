@@ -117,9 +117,10 @@ namespace DvMod.RemoteDispatch
             {
                 while (taskQueue.TryDequeue(out var action))
                     action();
-                // 50 ms latency is imperceptible for junction toggles and loco commands,
-                // and avoids draining the queue 60+ times per second when idle.
-                yield return WaitFor.Seconds(0.05f);
+                // Drain every frame so junction toggles and loco commands run on the next
+                // frame (~16 ms) instead of waiting up to 50 ms. A TryDequeue on an empty
+                // queue is negligible, so polling per-frame when idle costs effectively nothing.
+                yield return null;
             }
         }
 
