@@ -51,6 +51,7 @@ namespace DvMod.RemoteDispatch
                 new JProperty("position", latlon.ToJson()),
                 new JProperty("rotation", Math.Round(rotation, 2))
             );
+            obj.Add("carType", carType.ToString());
             if (jobId != null) obj.Add("jobId", jobId);
             if (destinationYardId != null) obj.Add("destinationYardId", destinationYardId);
             return obj;

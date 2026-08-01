@@ -1376,6 +1376,18 @@ function getCarOverlayBounds(carId, carData) {
 	return [[position[0] - width / 2, position[1] - length / 2], [position[0] + width / 2, position[1] + length / 2]];
 }
 
+// Hover tooltip: the car's type plus its current job and destination. Content is
+// a function so it reflects the latest carData each time the tooltip is shown.
+function buildCarTooltip(carId) {
+	const d = allCarData.get(carId);
+	if (!d) return carId;
+	const rows = [`<b>${carId}</b>`];
+	if (d.carType) rows.push(d.carType);
+	if (d.jobId) rows.push(`job ${d.jobId}`);
+	if (d.destinationYardId) rows.push(`to ${d.destinationYardId}`);
+	return rows.join('<br>');
+}
+
 function createNewCar(carId, carData) {
 	allCarData.set(carId, carData);
 	createCarRow(carId);
@@ -1384,6 +1396,7 @@ function createNewCar(carId, carData) {
 		getCarOverlayBounds(carId, carData),
 		{ interactive: true, bubblingMouseEvents: false })
 		.addEventListener('mouseup', e => followCar(carId, true))
+		.bindTooltip(() => buildCarTooltip(carId), { sticky: true, direction: 'top' })
 		.addTo(map);
 	carMarkers.set(carId, overlay);
 	updateCarMarker(carId);
