@@ -353,6 +353,36 @@ function jobElem(jobId, jobData) {
 		tbody.appendChild(row);
 	});
 
+	// DLE Direct Haul jobs carry the car->job link on the cars, not in the job's
+	// tasks, so the loop above renders no car cells for them. Fall back to any cars
+	// that report this jobId and that the tasks did not already list, and show them
+	// as the same clickable cells so they can be located like a stock job's cars.
+	const shownCars = new Set();
+	jobData.tasks.forEach(t => t.cars.forEach(c => shownCars.add(c)));
+	const extraCars = [];
+	allCarData.forEach((d, carId) => {
+		if (d.jobId === jobId && !shownCars.has(carId)) extraCars.push(carId);
+	});
+	if (extraCars.length) {
+		let carRow = document.createElement('tr');
+		for (let i = 0; i < extraCars.length; i++) {
+			if (i > 0 && i % CarsPerRow === 0) {
+				tbody.appendChild(carRow);
+				carRow = document.createElement('tr');
+			}
+			const carId = extraCars[i];
+			const carCell = document.createElement('td');
+			carCell.classList.add(`jobList-carCell-${carId}`);
+			carCell.classList.add('interactive');
+			carCell.textContent = carId;
+			carCell.addEventListener('click', () => followCar(carId, false));
+			carRow.appendChild(carCell);
+		}
+		while (carRow.children.length < CarsPerRow)
+			carRow.appendChild(document.createElement('td'));
+		tbody.appendChild(carRow);
+	}
+
 	return tbody;
 }
 
