@@ -17,6 +17,7 @@ const maxBounds = [[-0.02, -0.02], [0.17, 0.17]];
 const map = L.map('map', {
 	minZoom: 13,
 	maxBounds: maxBounds,
+	maxBoundsViscosity: 1.0,
 	tap: false,
 	zoomControl: false,
 	wheelPxPerZoomLevel: 40,
@@ -88,12 +89,10 @@ function updateSignalLayerVisibility() {
 
 let markerToFollow;
 map.addEventListener('mousedown', stopFollowing);
-map.on('drag', () => {
-	map.fitBounds(map.getBounds());
-});
-map.on('zoomanim', () => {
-	map.fitBounds(map.getBounds());
-});
+// maxBoundsViscosity (map options) hard-constrains panning to the world bounds
+// natively. We used to re-fit the view to itself on every drag and zoom-animation
+// frame to fake that constraint, but that fought Leaflet's own pan/zoom animation
+// and made both feel sluggish. Letting Leaflet animate normally is far snappier.
 
 function setMarkerToFollow(marker) {
 	markerToFollow = marker;
