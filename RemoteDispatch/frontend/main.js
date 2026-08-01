@@ -395,6 +395,13 @@ function updateCarJobs() {
 			});
 		})
 	});
+	// DLE Direct Haul jobs keep the car->job link on the cars, not in tasks, so the
+	// loop above misses them. Fall back to each car's own reported jobId for any car
+	// the tasks did not cover, so its map marker colours and labels by job like the rest.
+	allCarData.forEach((carData, carId) => {
+		if (carData.jobId && !carJobIds.has(carId))
+			carJobIds.set(carId, carData.jobId);
+	});
 	for ([carId, _] of allCarData) {
 		updateCarRow(carId);
 		updateCarMarker(carId);
