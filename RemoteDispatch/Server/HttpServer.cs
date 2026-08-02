@@ -90,19 +90,19 @@ namespace DvMod.RemoteDispatch
 			{
 			case "car":
 #if DEBUG
-				Main.Log("/car endpoint hit");
+				Main.DebugLog("/car endpoint hit");
 #endif
 				HandleCarRequest(context);
 				break;
 			case "junction":
 				HandleJunctionRequest(context);
 #if DEBUG
-				Main.Log("/junction endpoint hit");
+				Main.DebugLog("/junction endpoint hit");
 #endif
 				break;
 			case "player":
 #if DEBUG
-				Main.Log("/player endpoint hit");
+				Main.DebugLog("/player endpoint hit");
 #endif
 				if(!Main.settings.permissions.CanSeePlayerBlips(context.User.Identity.Name))
 				{
@@ -117,25 +117,25 @@ namespace DvMod.RemoteDispatch
 				break;
 			case "res":
 #if DEBUG
-				Main.Log("/res endpoint hit");
+				Main.DebugLog("/res endpoint hit");
 #endif
 				RenderResource(context);
 				break;
 			case "track":
 #if DEBUG
-				Main.Log("/track endpoint hit");
+				Main.DebugLog("/track endpoint hit");
 #endif
 				Render200(context, ContentTypes.Json, await RailTracks.GetTrackPointJSON().ConfigureAwait(false));
 				break;
 			case "updates":
 #if DEBUG
-				Main.Log("/updates endpoint hit");
+				Main.DebugLog("/updates endpoint hit");
 #endif
 				await HandleUpdatesRequest(context).ConfigureAwait(false);
 				break;
 			case "signals":
 #if DEBUG
-				Main.Log("/signals endpoint hit");
+				Main.DebugLog("/signals endpoint hit");
 #endif
 				// POST /signals/bulk — set mode (+ optional aspect) on many signals at once.
 				if (request.Url.Segments.Length >= 3
@@ -150,7 +150,7 @@ namespace DvMod.RemoteDispatch
 				break;
 			case "signal":
 #if DEBUG
-				Main.Log("/signal endpoint hit");
+				Main.DebugLog("/signal endpoint hit");
 #endif
 				await HandleSignalRequest(context);
 				break;
@@ -176,13 +176,13 @@ namespace DvMod.RemoteDispatch
 				break;
 			case "ws":
 #if DEBUG
-				Main.Log("/ws endpoint hit");
+				Main.DebugLog("/ws endpoint hit");
 #endif
 				await HandleWebSocketRequest(context).ConfigureAwait(false);
 				break;
 			default:
 #if DEBUG
-				Main.Log("unknown endpoint hit");
+				Main.DebugLog("unknown endpoint hit");
 #endif
 				RenderEmpty(context, 404);
 				break;
@@ -751,7 +751,7 @@ namespace DvMod.RemoteDispatch
 		private static void Render200(HttpListenerContext context, string contentType, string s)
 		{
 #if DEBUG
-			Main.Log("Render200");
+			Main.DebugLog("Render200");
 #endif
 			context.Response.ContentType = contentType;
 			var bytes = Encoding.UTF8.GetBytes(s);
