@@ -1685,7 +1685,11 @@ function applyUpdate(updateData) {
 		}
 	});
 	if (markerToFollow)
-		map.panTo(markerToFollow.getBounds().getCenter());
+		// Instant re-centre, not an animated pan. An animated panTo on every position
+		// update (2-4/sec) never finishes before the next begins, so the map animates
+		// nonstop, saturates the main thread, and incoming updates back up behind it,
+		// putting the followed loco tens of seconds behind reality. Snap instead.
+		map.panTo(markerToFollow.getBounds().getCenter(), { animate: false });
 }
 
 // Long-poll fallback (used only if the websocket can't be established).
